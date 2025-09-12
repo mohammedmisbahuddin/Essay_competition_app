@@ -38,9 +38,8 @@ RUN npm config set fund false && \
 COPY backend/src ./src
 COPY backend/env.example ./env.example
 
-# Create directories and copy database files
+# Create directories (database will be initialized by the app)
 RUN mkdir -p ./database ./uploads
-COPY backend/database/competition.db ./database/
 
 # Stage 3: Production Image
 FROM node:18-alpine AS production
