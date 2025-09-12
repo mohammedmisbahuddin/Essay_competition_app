@@ -1,0 +1,26 @@
+# Railway Environment Variables Template
+# Copy these variables to your Railway project environment variables
+
+# Database Configuration
+DATABASE_URL=postgresql://username:password@host:port/database
+
+# Application Configuration
+NODE_ENV=production
+PORT=5001
+
+# JWT Configuration
+JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
+
+# CORS Configuration
+CORS_ORIGIN=https://your-frontend-domain.railway.app
+
+# File Upload Configuration
+MAX_FILE_SIZE=5242880
+UPLOAD_DIR=uploads
+
+# Rate Limiting
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=100
+
+# Logging
+LOG_LEVEL=info
