@@ -1,0 +1,10 @@
+# Railway ignore file - exclude frontend from backend deployment
+frontend/
+node_modules/
+.git/
+*.log
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
