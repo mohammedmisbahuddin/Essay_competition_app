@@ -1,0 +1,9 @@
+timestamp_of_registration,full_name,age,qualification,gender,fathername,email_id,phone
+2024-01-15 10:30:00,John Doe,25,Bachelor of Engineering,male,Robert Doe,john.doe@email.com,+1234567890
+2024-01-15 11:15:00,Jane Smith,23,Master of Arts,female,Michael Smith,jane.smith@email.com,+1234567891
+2024-01-15 12:00:00,Mike Johnson,28,Bachelor of Science,male,David Johnson,mike.johnson@email.com,+1234567892
+2024-01-15 12:45:00,Sarah Wilson,22,Bachelor of Commerce,female,James Wilson,sarah.wilson@email.com,+1234567893
+2024-01-15 13:30:00,David Brown,26,Master of Technology,male,William Brown,david.brown@email.com,+1234567894
+2024-01-15 14:15:00,Lisa Davis,24,Bachelor of Arts,female,Thomas Davis,lisa.davis@email.com,+1234567895
+2024-01-15 15:00:00,Tom Wilson,27,Bachelor of Engineering,male,Richard Wilson,tom.wilson@email.com,+1234567896
+2024-01-15 15:45:00,Emma Taylor,25,Master of Science,female,Charles Taylor,emma.taylor@email.com,+1234567897
