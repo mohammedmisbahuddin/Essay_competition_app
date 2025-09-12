@@ -5,13 +5,13 @@ FROM node:18-alpine AS frontend-builder
 WORKDIR /app/frontend
 
 # Copy frontend package files
-COPY ./frontend/package*.json ./
+COPY frontend/package*.json ./
 
 # Install frontend dependencies
 RUN npm ci --only=production
 
 # Copy frontend source code
-COPY ./frontend/* ./
+COPY frontend/ ./
 
 # Build frontend
 RUN npm run build
@@ -35,10 +35,10 @@ RUN npm config set fund false && \
     npm install --omit=dev --no-optional
 
 # Copy backend source code
-COPY ./backend/src ./src
-COPY ./backend/database ./database
-COPY ./backend/uploads ./uploads
-COPY ./backend/env.example ./env.example
+COPY backend/src ./src
+COPY backend/database ./database
+COPY backend/uploads ./uploads
+COPY backend/env.example ./env.example
 
 # Stage 3: Production Image
 FROM node:18-alpine AS production
