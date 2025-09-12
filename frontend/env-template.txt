@@ -1,0 +1,12 @@
+# Frontend Environment Variables Template
+# Copy this to your Railway frontend service environment variables
+
+# Backend API URL (your backend Railway service URL)
+NEXT_PUBLIC_API_URL=https://your-backend-service.railway.app/api
+
+# Next.js Configuration
+NODE_ENV=production
+PORT=3000
+
+# Optional: Analytics, monitoring, etc.
+# NEXT_PUBLIC_ANALYTICS_ID=your-analytics-id
