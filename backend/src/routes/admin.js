@@ -157,19 +157,18 @@ router.post('/import/csv', authenticateToken, requireAdmin, async (req, res) => 
               // Process participants with smart duplicate handling
               for (const participant of cleanedData) {
                 try {
-                  // Check if participant already exists by multiple criteria
+                  // Check if participant already exists by Full Name + Gender + Age (case-insensitive)
                   const existing = await getQuery(
                     `SELECT id, registration_number FROM participants WHERE 
-                     (email = ? AND email IS NOT NULL AND email != '') OR 
-                     (full_name = ? AND age = ? AND age IS NOT NULL) OR
-                     (phone = ? AND phone IS NOT NULL AND phone != '')`,
-                    [participant.email, participant.full_name, participant.age, participant.phone]
+                     LOWER(full_name) = LOWER(?) AND LOWER(gender) = LOWER(?) AND age = ? AND 
+                     full_name IS NOT NULL AND gender IS NOT NULL AND age IS NOT NULL`,
+                    [participant.full_name, participant.gender, participant.age]
                   );
 
                   if (existing) {
                     // Participant exists - skip creation (as requested)
                     results.skipped++;
-                    console.log(`Skipping existing participant: ${participant.full_name} (ID: ${existing.id})`);
+                    console.log(`Skipping existing participant: ${participant.full_name} (ID: ${existing.id}, Reg: ${existing.registration_number})`);
                   } else {
                     // Create new participant
                     const registrationNumber = await generateRegistrationNumber();
@@ -609,6 +608,58 @@ router.delete('/users/:id', authenticateToken, requireAdmin, async (req, res) =>
   } catch (error) {
     console.error('Delete user error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Clear all data (CRITICAL OPERATION - requires double confirmation)
+router.delete('/clear-all-data', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { confirmCode } = req.body;
+    
+    // Double confirmation required
+    if (confirmCode !== 'CLEAR_ALL_DATA_CONFIRM') {
+      return res.status(400).json({ 
+        error: 'Invalid confirmation code. This operation requires explicit confirmation.',
+        message: 'To clear all data, you must provide the exact confirmation code: CLEAR_ALL_DATA_CONFIRM'
+      });
+    }
+
+    console.log('🚨 CRITICAL OPERATION: Clearing all data initiated by admin:', req.user.username);
+    
+    // Clear all tables in correct order (respecting foreign key constraints)
+    await runQuery('DELETE FROM evaluations');
+    console.log('✅ Cleared evaluations table');
+    
+    await runQuery('DELETE FROM participants');
+    console.log('✅ Cleared participants table');
+    
+    // Note: We don't clear users table to prevent admin lockout
+    // Only clear non-admin users if needed
+    const adminUsers = await allQuery('SELECT id FROM users WHERE role = ?', ['admin']);
+    if (adminUsers.length > 0) {
+      await runQuery('DELETE FROM users WHERE role != ?', ['admin']);
+      console.log('✅ Cleared non-admin users (preserved admin accounts)');
+    }
+    
+    // Reset registration number sequence
+    await runQuery('DELETE FROM sqlite_sequence WHERE name IN (?, ?)', ['participants', 'evaluations']);
+    console.log('✅ Reset auto-increment sequences');
+    
+    console.log('🚨 CRITICAL OPERATION COMPLETED: All data cleared successfully');
+    
+    res.json({
+      message: 'All data has been cleared successfully',
+      warning: 'This operation cannot be undone',
+      cleared_tables: ['participants', 'evaluations', 'non-admin users'],
+      preserved: ['admin users', 'competition settings']
+    });
+    
+  } catch (error) {
+    console.error('❌ Error clearing all data:', error);
+    res.status(500).json({ 
+      error: 'Failed to clear all data',
+      details: error.message 
+    });
   }
 });
 

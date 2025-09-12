@@ -71,6 +71,9 @@ export const participantsAPI = {
   
   delete: (id: number) =>
     api.delete(`/participants/${id}`),
+
+  markPresent: (id: number) =>
+    api.patch(`/participants/${id}/present`),
 };
 
 // Evaluations API
@@ -138,6 +141,9 @@ export const adminAPI = {
       },
     });
   },
+
+  clearAllData: (confirmCode: string) =>
+    api.delete('/admin/clear-all-data', { data: { confirmCode } }),
 };
 
 // Google Sheets API

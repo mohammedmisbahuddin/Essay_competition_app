@@ -6,8 +6,8 @@ const { generateRegistrationNumber } = require('../utils/helpers');
 
 const router = express.Router();
 
-// Search participants (for invigilators)
-router.get('/search', authenticateToken, requireInvigilator, async (req, res) => {
+// Search participants (for invigilators and registration desk)
+router.get('/search', authenticateToken, requireRole(['invigilator', 'registration_desk', 'admin']), async (req, res) => {
   try {
     const { q: searchTerm } = req.query;
     
@@ -115,8 +115,8 @@ router.get('/search/:identifier', authenticateToken, async (req, res) => {
   }
 });
 
-// Validate registration number (for invigilators and evaluators)
-router.get('/validate/:registrationNumber', authenticateToken, requireRole(['invigilator', 'evaluator', 'admin']), async (req, res) => {
+// Validate registration number (for invigilators, evaluators, and registration desk)
+router.get('/validate/:registrationNumber', authenticateToken, requireRole(['invigilator', 'evaluator', 'registration_desk', 'admin']), async (req, res) => {
   try {
     const { registrationNumber } = req.params;
     
@@ -171,6 +171,25 @@ router.post('/', [
     }
 
     const { full_name, email, phone, gender, age, qualification, father_name } = req.body;
+
+    // Check if participant already exists by Full Name + Gender + Age (case-insensitive)
+    const existing = await getQuery(
+      `SELECT id, registration_number FROM participants WHERE 
+       LOWER(full_name) = LOWER(?) AND LOWER(gender) = LOWER(?) AND age = ? AND 
+       full_name IS NOT NULL AND gender IS NOT NULL AND age IS NOT NULL`,
+      [full_name, gender, age]
+    );
+
+    if (existing) {
+      return res.status(400).json({ 
+        error: 'Participant already exists',
+        existing_participant: {
+          id: existing.id,
+          registration_number: existing.registration_number,
+          full_name: full_name
+        }
+      });
+    }
 
     // Generate unique registration number
     const registrationNumber = await generateRegistrationNumber();
@@ -281,6 +300,36 @@ router.delete('/:id', authenticateToken, async (req, res) => {
     res.json({ message: 'Participant deleted successfully' });
   } catch (error) {
     console.error('Delete participant error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Mark participant as present (attendance tracking)
+router.patch('/:id/present', authenticateToken, requireRegistrationDesk, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if participant exists
+    const participant = await getQuery('SELECT id, full_name FROM participants WHERE id = ?', [id]);
+    if (!participant) {
+      return res.status(404).json({ error: 'Participant not found' });
+    }
+
+    // Update attendance status
+    await runQuery(
+      'UPDATE participants SET attendance_marked = true, attendance_marked_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [id]
+    );
+
+    res.json({
+      message: 'Participant marked as present',
+      participant: {
+        id: participant.id,
+        full_name: participant.full_name
+      }
+    });
+  } catch (error) {
+    console.error('Mark present error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

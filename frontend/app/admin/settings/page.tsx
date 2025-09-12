@@ -3,7 +3,7 @@
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Settings as SettingsIcon, Users, Upload, Save, Plus, Edit, Trash2, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, Settings as SettingsIcon, Users, Upload, Save, Plus, Edit, Trash2, Eye, EyeOff, AlertTriangle } from 'lucide-react';
 import { adminAPI } from '@/lib/api';
 import toast from 'react-hot-toast';
 
@@ -31,7 +31,7 @@ interface CompetitionSettings {
 export default function Settings() {
   const { user, logout } = useAuth();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'settings' | 'users'>('settings');
+  const [activeTab, setActiveTab] = useState<'settings' | 'users' | 'danger'>('settings');
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<User[]>([]);
   const [settings, setSettings] = useState<CompetitionSettings | null>(null);
@@ -46,6 +46,12 @@ export default function Settings() {
     password: '',
     role: 'invigilator'
   });
+
+  // Clear all data states
+  const [showClearDataModal, setShowClearDataModal] = useState(false);
+  const [clearDataStep, setClearDataStep] = useState(1);
+  const [clearDataConfirmCode, setClearDataConfirmCode] = useState('');
+  const [isClearingData, setIsClearingData] = useState(false);
 
   useEffect(() => {
     if (user && user.role !== 'admin') {
@@ -87,11 +93,8 @@ export default function Settings() {
     }
 
     try {
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-
-      const response = await adminAPI.importFromCSV(formData);
-      toast.success(`Successfully imported ${response.data.created} participants`);
+      const response = await adminAPI.importFromCSV(selectedFile);
+      toast.success(`Successfully imported ${response.data.results.created} participants`);
       setSelectedFile(null);
       
       // Reset file input
@@ -112,7 +115,7 @@ export default function Settings() {
         });
       }
 
-      await adminAPI.updateSettings(settingsToUpdate);
+      await adminAPI.updateSettings({ settings: settingsToUpdate });
       toast.success('Settings updated successfully');
     } catch (error: any) {
       toast.error('Failed to update settings');
@@ -192,6 +195,45 @@ export default function Settings() {
     }
   };
 
+  // Clear all data handlers
+  const handleClearAllData = async () => {
+    if (clearDataStep === 1) {
+      setClearDataStep(2);
+      return;
+    }
+
+    if (clearDataStep === 2) {
+      if (clearDataConfirmCode !== 'CLEAR_ALL_DATA_CONFIRM') {
+        toast.error('Invalid confirmation code. Please enter the exact code: CLEAR_ALL_DATA_CONFIRM');
+        return;
+      }
+
+      setIsClearingData(true);
+      try {
+        await adminAPI.clearAllData(clearDataConfirmCode);
+        toast.success('All data has been cleared successfully');
+        setShowClearDataModal(false);
+        setClearDataStep(1);
+        setClearDataConfirmCode('');
+        
+        // Refresh the page to reflect cleared data
+        window.location.reload();
+      } catch (error: any) {
+        console.error('Clear data error:', error);
+        toast.error(error.response?.data?.error || 'Failed to clear all data');
+      } finally {
+        setIsClearingData(false);
+      }
+    }
+  };
+
+  const resetClearDataModal = () => {
+    setShowClearDataModal(false);
+    setClearDataStep(1);
+    setClearDataConfirmCode('');
+    setIsClearingData(false);
+  };
+
   const getRoleDisplayName = (role: string) => {
     switch (role) {
       case 'admin': return 'Admin';
@@ -264,6 +306,17 @@ export default function Settings() {
               <Users className="h-5 w-5 inline mr-2" />
               User Management
             </button>
+            <button
+              onClick={() => setActiveTab('danger')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'danger'
+                  ? 'border-red-500 text-red-600'
+                  : 'border-transparent text-red-500 hover:text-red-700 hover:border-red-300'
+              }`}
+            >
+              <AlertTriangle className="h-5 w-5 inline mr-2" />
+              Danger Zone
+            </button>
           </nav>
         </div>
 
@@ -308,33 +361,273 @@ export default function Settings() {
             {/* Competition Settings */}
             {settings && (
               <div className="bg-white shadow rounded-lg p-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Competition Settings</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {Object.entries(settings).map(([key, setting]) => (
-                    <div key={key}>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {setting.description}
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-lg font-medium text-gray-900">Competition Settings</h3>
+                  <div className="text-sm text-gray-500">
+                    Last updated: {new Date().toLocaleDateString()}
+                  </div>
+                </div>
+
+                {/* Basic Competition Information */}
+                <div className="mb-8">
+                  <h4 className="text-md font-medium text-gray-800 mb-4 pb-2 border-b border-gray-200">
+                    Competition Information
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Competition Name *
                       </label>
                       <input
-                        type={key.includes('date') ? 'date' : 'text'}
-                        value={setting.value}
+                        type="text"
+                        value={settings.competition_name?.value || ''}
                         onChange={(e) => setSettings(prev => prev ? {
                           ...prev,
-                          [key]: { ...setting, value: e.target.value }
+                          competition_name: { ...prev.competition_name, value: e.target.value }
                         } : null)}
-                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Enter competition name"
                       />
                     </div>
-                  ))}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Competition Date *
+                      </label>
+                      <input
+                        type="date"
+                        value={settings.competition_date?.value || ''}
+                        onChange={(e) => setSettings(prev => prev ? {
+                          ...prev,
+                          competition_date: { ...prev.competition_date, value: e.target.value }
+                        } : null)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Registration Deadline *
+                      </label>
+                      <input
+                        type="date"
+                        value={settings.registration_deadline?.value || ''}
+                        onChange={(e) => setSettings(prev => prev ? {
+                          ...prev,
+                          registration_deadline: { ...prev.registration_deadline, value: e.target.value }
+                        } : null)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Maximum Participants *
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="1000"
+                        value={settings.max_participants?.value || ''}
+                        onChange={(e) => setSettings(prev => prev ? {
+                          ...prev,
+                          max_participants: { ...prev.max_participants, value: e.target.value }
+                        } : null)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Enter maximum participants"
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="mt-6">
-                  <button
-                    onClick={handleUpdateSettings}
-                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-                  >
-                    <Save className="h-4 w-4 mr-2" />
-                    Update Settings
-                  </button>
+
+                {/* Evaluation Criteria */}
+                <div className="mb-8">
+                  <h4 className="text-md font-medium text-gray-800 mb-4 pb-2 border-b border-gray-200">
+                    Evaluation Criteria (Maximum Marks)
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Introduction *
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="50"
+                        value={settings.introduction_max?.value || settings.max_introduction_marks?.value || ''}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setSettings(prev => prev ? {
+                            ...prev,
+                            introduction_max: { ...prev.introduction_max, value },
+                            max_introduction_marks: { ...prev.max_introduction_marks, value }
+                          } : null);
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Max marks for introduction"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Content *
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={settings.content_max?.value || settings.max_content_marks?.value || ''}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setSettings(prev => prev ? {
+                            ...prev,
+                            content_max: { ...prev.content_max, value },
+                            max_content_marks: { ...prev.max_content_marks, value }
+                          } : null);
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Max marks for content"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Conclusion *
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="50"
+                        value={settings.conclusion_max?.value || settings.max_conclusion_marks?.value || ''}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setSettings(prev => prev ? {
+                            ...prev,
+                            conclusion_max: { ...prev.conclusion_max, value },
+                            max_conclusion_marks: { ...prev.max_conclusion_marks, value }
+                          } : null);
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Max marks for conclusion"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Handwriting *
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="50"
+                        value={settings.handwriting_max?.value || settings.max_handwriting_marks?.value || ''}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setSettings(prev => prev ? {
+                            ...prev,
+                            handwriting_max: { ...prev.handwriting_max, value },
+                            max_handwriting_marks: { ...prev.max_handwriting_marks, value }
+                          } : null);
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Max marks for handwriting"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Grammar & Spelling *
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="50"
+                        value={settings.grammar_max?.value || settings.max_grammar_marks?.value || ''}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setSettings(prev => prev ? {
+                            ...prev,
+                            grammar_max: { ...prev.grammar_max, value },
+                            max_grammar_marks: { ...prev.max_grammar_marks, value }
+                          } : null);
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Max marks for grammar"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Special Points *
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="50"
+                        value={settings.special_points_max?.value || settings.max_special_points?.value || ''}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setSettings(prev => prev ? {
+                            ...prev,
+                            special_points_max: { ...prev.special_points_max, value },
+                            max_special_points: { ...prev.max_special_points, value }
+                          } : null);
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Max special points"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Total Marks Summary */}
+                <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <h4 className="text-md font-medium text-blue-800 mb-2">Total Maximum Marks</h4>
+                  <div className="text-2xl font-bold text-blue-900">
+                    {(() => {
+                      const intro = parseInt(settings.introduction_max?.value || settings.max_introduction_marks?.value || '0');
+                      const content = parseInt(settings.content_max?.value || settings.max_content_marks?.value || '0');
+                      const conclusion = parseInt(settings.conclusion_max?.value || settings.max_conclusion_marks?.value || '0');
+                      const handwriting = parseInt(settings.handwriting_max?.value || settings.max_handwriting_marks?.value || '0');
+                      const grammar = parseInt(settings.grammar_max?.value || settings.max_grammar_marks?.value || '0');
+                      const special = parseInt(settings.special_points_max?.value || settings.max_special_points?.value || '0');
+                      return intro + content + conclusion + handwriting + grammar + special;
+                    })()} Points
+                  </div>
+                  <p className="text-sm text-blue-700 mt-1">
+                    This is the maximum total score a participant can achieve
+                  </p>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex justify-between items-center pt-4 border-t border-gray-200">
+                  <div className="text-sm text-gray-500">
+                    * Required fields
+                  </div>
+                  <div className="flex space-x-3">
+                    <button
+                      onClick={() => {
+                        // Reset to default values
+                        if (settings) {
+                          setSettings({
+                            ...settings,
+                            competition_name: { ...settings.competition_name, value: '' },
+                            competition_date: { ...settings.competition_date, value: '' },
+                            registration_deadline: { ...settings.registration_deadline, value: '' },
+                            max_participants: { ...settings.max_participants, value: '100' },
+                            introduction_max: { ...settings.introduction_max, value: '10' },
+                            content_max: { ...settings.content_max, value: '40' },
+                            conclusion_max: { ...settings.conclusion_max, value: '10' },
+                            handwriting_max: { ...settings.handwriting_max, value: '10' },
+                            grammar_max: { ...settings.grammar_max, value: '10' },
+                            special_points_max: { ...settings.special_points_max, value: '10' }
+                          });
+                        }
+                      }}
+                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                    >
+                      Reset to Defaults
+                    </button>
+                    <button
+                      onClick={handleUpdateSettings}
+                      className="inline-flex items-center px-6 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <Save className="h-4 w-4 mr-2" />
+                      Save Settings
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -484,6 +777,135 @@ export default function Settings() {
                   </tbody>
                 </table>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Danger Zone Tab */}
+        {activeTab === 'danger' && (
+          <div className="space-y-6">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+              <div className="flex items-center mb-4">
+                <AlertTriangle className="h-6 w-6 text-red-600 mr-3" />
+                <h3 className="text-lg font-medium text-red-900">Danger Zone</h3>
+              </div>
+              <p className="text-red-700 mb-4">
+                The actions in this section are irreversible and will permanently delete data from the system.
+                Please proceed with extreme caution.
+              </p>
+              
+              <div className="bg-white border border-red-300 rounded-lg p-4">
+                <h4 className="text-md font-medium text-red-900 mb-2">Clear All Data</h4>
+                <p className="text-red-700 mb-4">
+                  This will permanently delete all participants, evaluations, and non-admin users from the system.
+                  This action cannot be undone.
+                </p>
+                <div className="bg-red-100 border border-red-300 rounded p-3 mb-4">
+                  <p className="text-sm text-red-800 font-medium mb-1">What will be deleted:</p>
+                  <ul className="text-sm text-red-700 list-disc list-inside">
+                    <li>All participant records and registration data</li>
+                    <li>All evaluation scores and feedback</li>
+                    <li>All non-admin user accounts (invigilators, evaluators, registration desk)</li>
+                    <li>Registration number sequences (will reset to REG250001)</li>
+                  </ul>
+                  <p className="text-sm text-red-800 font-medium mt-2 mb-1">What will be preserved:</p>
+                  <ul className="text-sm text-red-700 list-disc list-inside">
+                    <li>Admin user accounts</li>
+                    <li>Competition settings and configuration</li>
+                  </ul>
+                </div>
+                <button
+                  onClick={() => setShowClearDataModal(true)}
+                  className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium"
+                >
+                  Clear All Data
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Clear All Data Modal */}
+        {showClearDataModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+              <div className="flex items-center mb-4">
+                <AlertTriangle className="h-6 w-6 text-red-600 mr-3" />
+                <h3 className="text-lg font-medium text-red-900">
+                  {clearDataStep === 1 ? 'Confirm Clear All Data' : 'Final Confirmation'}
+                </h3>
+              </div>
+              
+              {clearDataStep === 1 ? (
+                <div>
+                  <p className="text-red-700 mb-4">
+                    Are you absolutely sure you want to clear all data? This action will permanently delete:
+                  </p>
+                  <ul className="text-sm text-red-700 list-disc list-inside mb-4">
+                    <li>All participants and their registration data</li>
+                    <li>All evaluation scores and feedback</li>
+                    <li>All non-admin user accounts</li>
+                    <li>Registration number sequences</li>
+                  </ul>
+                  <p className="text-red-800 font-medium mb-4">
+                    This action cannot be undone!
+                  </p>
+                  <div className="flex justify-end space-x-3">
+                    <button
+                      onClick={resetClearDataModal}
+                      className="px-4 py-2 text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleClearAllData}
+                      className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                    >
+                      Yes, I'm Sure
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-red-700 mb-4">
+                    To proceed with clearing all data, please type the exact confirmation code:
+                  </p>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Confirmation Code:
+                    </label>
+                    <input
+                      type="text"
+                      value={clearDataConfirmCode}
+                      onChange={(e) => setClearDataConfirmCode(e.target.value)}
+                      placeholder="CLEAR_ALL_DATA_CONFIRM"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                    />
+                  </div>
+                  <div className="flex justify-end space-x-3">
+                    <button
+                      onClick={resetClearDataModal}
+                      className="px-4 py-2 text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleClearAllData}
+                      disabled={isClearingData || clearDataConfirmCode !== 'CLEAR_ALL_DATA_CONFIRM'}
+                      className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                    >
+                      {isClearingData ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                          Clearing...
+                        </>
+                      ) : (
+                        'Clear All Data'
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
