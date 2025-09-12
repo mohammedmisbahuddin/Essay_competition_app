@@ -1,7 +1,12 @@
 const express = require('express');
+const multer = require('multer');
+const csv = require('csv-parser');
+const fs = require('fs');
+const path = require('path');
+const bcrypt = require('bcrypt');
 const { getQuery, allQuery, runQuery } = require('../utils/database');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
-const { generateStatistics } = require('../utils/helpers');
+const { generateStatistics, cleanParticipantData, generateRegistrationNumber } = require('../utils/helpers');
 
 const router = express.Router();
 
@@ -268,7 +273,7 @@ router.get('/results', authenticateToken, requireAdmin, async (req, res) => {
     const sortDirection = sortOrder.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
     const results = await allQuery(`
-      SELECT p.id, p.registration_number, p.full_name, p.gender, p.institution,
+      SELECT p.id, p.registration_number, p.full_name, p.gender, p.qualification,
              AVG(e.total_marks) as average_marks,
              COUNT(e.id) as evaluation_count,
              MIN(e.total_marks) as min_marks,
@@ -277,7 +282,7 @@ router.get('/results', authenticateToken, requireAdmin, async (req, res) => {
       FROM participants p
       JOIN evaluations e ON p.id = e.participant_id
       ${whereClause}
-      GROUP BY p.id, p.registration_number, p.full_name, p.gender, p.institution
+      GROUP BY p.id, p.registration_number, p.full_name, p.gender, p.qualification
       ORDER BY ${sortColumn} ${sortDirection}
       LIMIT ? OFFSET ?
     `, [...params, limit, offset]);
@@ -416,6 +421,10 @@ router.put('/settings', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { settings } = req.body;
 
+    if (!settings || typeof settings !== 'object') {
+      return res.status(400).json({ error: 'Settings object is required' });
+    }
+
     for (const [key, value] of Object.entries(settings)) {
       await runQuery(
         'UPDATE competition_settings SET setting_value = ?, updated_at = CURRENT_TIMESTAMP WHERE setting_key = ?',
@@ -434,19 +443,19 @@ router.put('/settings', authenticateToken, requireAdmin, async (req, res) => {
 router.get('/export/results', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const results = await allQuery(`
-      SELECT p.registration_number, p.full_name, p.gender, p.email, p.phone, p.institution,
+      SELECT p.registration_number, p.full_name, p.gender, p.email, p.phone, p.qualification,
              AVG(e.total_marks) as average_marks,
              COUNT(e.id) as evaluation_count
       FROM participants p
       LEFT JOIN evaluations e ON p.id = e.participant_id AND e.is_submitted = 1
-      GROUP BY p.id, p.registration_number, p.full_name, p.gender, p.email, p.phone, p.institution
+      GROUP BY p.id, p.registration_number, p.full_name, p.gender, p.email, p.phone, p.qualification
       ORDER BY average_marks DESC
     `);
 
     // Convert to CSV
-    const csvHeader = 'Registration Number,Full Name,Gender,Email,Phone,Institution,Average Marks,Evaluation Count\n';
+    const csvHeader = 'Registration Number,Full Name,Gender,Email,Phone,Qualification,Average Marks,Evaluation Count\n';
     const csvData = results.map(row => 
-      `"${row.registration_number}","${row.full_name}","${row.gender}","${row.email || ''}","${row.phone || ''}","${row.institution || ''}","${row.average_marks || 0}","${row.evaluation_count || 0}"`
+      `"${row.registration_number}","${row.full_name}","${row.gender}","${row.email || ''}","${row.phone || ''}","${row.qualification || ''}","${row.average_marks || 0}","${row.evaluation_count || 0}"`
     ).join('\n');
 
     const csv = csvHeader + csvData;
@@ -456,6 +465,149 @@ router.get('/export/results', authenticateToken, requireAdmin, async (req, res) 
     res.send(csv);
   } catch (error) {
     console.error('Export results error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get all users
+router.get('/users', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const users = await allQuery(`
+      SELECT id, username, role, created_at, last_login
+      FROM users 
+      ORDER BY created_at DESC
+    `);
+    
+    res.json({ users });
+  } catch (error) {
+    console.error('Get users error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Create new user
+router.post('/users', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { username, password, role } = req.body;
+
+    // Validate required fields
+    if (!username || !password || !role) {
+      return res.status(400).json({ error: 'Username, password, and role are required' });
+    }
+
+    // Validate role
+    const validRoles = ['admin', 'registration_desk', 'invigilator', 'evaluator'];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ error: 'Invalid role. Must be one of: admin, registration_desk, invigilator, evaluator' });
+    }
+
+    // Check if username already exists
+    const existingUser = await getQuery('SELECT id FROM users WHERE username = ?', [username]);
+    if (existingUser) {
+      return res.status(400).json({ error: 'Username already exists' });
+    }
+
+    // Hash password
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+    // Create user
+    const result = await runQuery(
+      'INSERT INTO users (username, password_hash, role, email, full_name) VALUES (?, ?, ?, ?, ?)',
+      [username, hashedPassword, role, `${username}@example.com`, username]
+    );
+
+    res.status(201).json({ 
+      message: 'User created successfully',
+      user: {
+        id: result.lastID,
+        username,
+        role,
+        created_at: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('Create user error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update user
+router.put('/users/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { username, password, role } = req.body;
+
+    // Validate required fields
+    if (!username || !role) {
+      return res.status(400).json({ error: 'Username and role are required' });
+    }
+
+    // Validate role
+    const validRoles = ['admin', 'registration_desk', 'invigilator', 'evaluator'];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ error: 'Invalid role. Must be one of: admin, registration_desk, invigilator, evaluator' });
+    }
+
+    // Check if user exists
+    const existingUser = await getQuery('SELECT id FROM users WHERE id = ?', [id]);
+    if (!existingUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Check if username already exists (excluding current user)
+    const usernameExists = await getQuery('SELECT id FROM users WHERE username = ? AND id != ?', [username, id]);
+    if (usernameExists) {
+      return res.status(400).json({ error: 'Username already exists' });
+    }
+
+    let updateQuery = 'UPDATE users SET username = ?, role = ?';
+    let params = [username, role];
+
+    // Update password only if provided
+    if (password) {
+      const saltRounds = 10;
+      const hashedPassword = await bcrypt.hash(password, saltRounds);
+      updateQuery += ', password_hash = ?';
+      params.push(hashedPassword);
+    }
+
+    updateQuery += ' WHERE id = ?';
+    params.push(id);
+
+    await runQuery(updateQuery, params);
+
+    res.json({ message: 'User updated successfully' });
+  } catch (error) {
+    console.error('Update user error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete user
+router.delete('/users/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if user exists
+    const existingUser = await getQuery('SELECT id, role FROM users WHERE id = ?', [id]);
+    if (!existingUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Prevent deleting the last admin
+    if (existingUser.role === 'admin') {
+      const adminCount = await getQuery('SELECT COUNT(*) as count FROM users WHERE role = ?', ['admin']);
+      if (adminCount.count <= 1) {
+        return res.status(400).json({ error: 'Cannot delete the last admin user' });
+      }
+    }
+
+    await runQuery('DELETE FROM users WHERE id = ?', [id]);
+
+    res.json({ message: 'User deleted successfully' });
+  } catch (error) {
+    console.error('Delete user error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

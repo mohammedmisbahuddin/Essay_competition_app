@@ -3,191 +3,209 @@
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Save, Upload, Download, Settings as SettingsIcon } from 'lucide-react';
+import { ArrowLeft, Settings as SettingsIcon, Users, Upload, Save, Plus, Edit, Trash2, Eye, EyeOff } from 'lucide-react';
 import { adminAPI } from '@/lib/api';
 import toast from 'react-hot-toast';
 
+interface User {
+  id: number;
+  username: string;
+  role: string;
+  created_at: string;
+  last_login?: string;
+}
+
 interface CompetitionSettings {
-  competition_name: string;
-  competition_date: string;
-  registration_deadline: string;
-  max_participants: number;
-  evaluation_criteria: {
-    introduction_max: number;
-    content_max: number;
-    conclusion_max: number;
-    handwriting_max: number;
-    grammar_max: number;
-    special_points_max: number;
-  };
+  competition_name: { value: string; description: string };
+  competition_date: { value: string; description: string };
+  registration_deadline: { value: string; description: string };
+  max_participants: { value: string; description: string };
+  introduction_max: { value: string; description: string };
+  content_max: { value: string; description: string };
+  conclusion_max: { value: string; description: string };
+  handwriting_max: { value: string; description: string };
+  grammar_max: { value: string; description: string };
+  special_points_max: { value: string; description: string };
 }
 
 export default function Settings() {
   const { user, logout } = useAuth();
   const router = useRouter();
-  const [settings, setSettings] = useState<CompetitionSettings>({
-    competition_name: '',
-    competition_date: '',
-    registration_deadline: '',
-    max_participants: 100,
-    evaluation_criteria: {
-      introduction_max: 10,
-      content_max: 40,
-      conclusion_max: 10,
-      handwriting_max: 10,
-      grammar_max: 10,
-      special_points_max: 10
-    }
-  });
+  const [activeTab, setActiveTab] = useState<'settings' | 'users'>('settings');
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [users, setUsers] = useState<User[]>([]);
+  const [settings, setSettings] = useState<CompetitionSettings | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [showPassword, setShowPassword] = useState<{ [key: number]: boolean }>({});
+  
+  // User form states
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [userForm, setUserForm] = useState({
+    username: '',
+    password: '',
+    role: 'invigilator'
+  });
 
   useEffect(() => {
     if (user && user.role !== 'admin') {
       router.push('/login');
     } else if (user && user.role === 'admin') {
-      fetchSettings();
+      fetchData();
     }
   }, [user, router]);
 
-  const fetchSettings = async () => {
+  const fetchData = async () => {
     try {
       setLoading(true);
-      const response = await adminAPI.getSettings();
-      const settingsData = response.data?.settings || {};
+      const [settingsResponse, usersResponse] = await Promise.all([
+        adminAPI.getSettings(),
+        adminAPI.getUsers()
+      ]);
       
-      // Parse the settings from the backend format
-      const parsedSettings = {
-        competition_name: settingsData.competition_name?.value || '',
-        competition_date: settingsData.competition_date?.value || '',
-        registration_deadline: settingsData.registration_deadline?.value || '',
-        max_participants: parseInt(settingsData.max_participants?.value) || 100,
-        evaluation_criteria: {
-          introduction_max: parseInt(settingsData.introduction_max?.value) || 10,
-          content_max: parseInt(settingsData.content_max?.value) || 40,
-          conclusion_max: parseInt(settingsData.conclusion_max?.value) || 10,
-          handwriting_max: parseInt(settingsData.handwriting_max?.value) || 10,
-          grammar_max: parseInt(settingsData.grammar_max?.value) || 10,
-          special_points_max: parseInt(settingsData.special_points_max?.value) || 10
-        }
-      };
-      
-      setSettings(parsedSettings);
+      setSettings(settingsResponse.data.settings || {});
+      setUsers(usersResponse.data.users || []);
     } catch (error: any) {
-      toast.error('Failed to load settings');
-      console.error('Error fetching settings:', error);
-      // Keep default settings if API fails
+      toast.error('Failed to load data');
+      console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSaveSettings = async () => {
-    try {
-      setSaving(true);
-      
-      // Convert settings to the format expected by the backend
-      const settingsToSave = {
-        competition_name: settings.competition_name,
-        competition_date: settings.competition_date,
-        registration_deadline: settings.registration_deadline,
-        max_participants: settings.max_participants.toString(),
-        introduction_max: settings.evaluation_criteria.introduction_max.toString(),
-        content_max: settings.evaluation_criteria.content_max.toString(),
-        conclusion_max: settings.evaluation_criteria.conclusion_max.toString(),
-        handwriting_max: settings.evaluation_criteria.handwriting_max.toString(),
-        grammar_max: settings.evaluation_criteria.grammar_max.toString(),
-        special_points_max: settings.evaluation_criteria.special_points_max.toString()
-      };
-      
-      await adminAPI.updateSettings(settingsToSave);
-      toast.success('Settings saved successfully');
-    } catch (error: any) {
-      toast.error('Failed to save settings');
-      console.error('Error saving settings:', error);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (file) {
-      if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
-        setCsvFile(file);
-      } else {
-        toast.error('Please select a CSV file');
-        event.target.value = '';
-      }
+      setSelectedFile(file);
     }
   };
 
   const handleImportFromCSV = async () => {
-    if (!csvFile) {
+    if (!selectedFile) {
       toast.error('Please select a CSV file');
       return;
     }
 
     try {
-      setSaving(true);
-      const response = await adminAPI.importFromCSV(csvFile);
-      const { results } = response.data;
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+
+      const response = await adminAPI.importFromCSV(formData);
+      toast.success(`Successfully imported ${response.data.created} participants`);
+      setSelectedFile(null);
       
-      // Show detailed import results
-      toast.success(
-        `Import completed! Total: ${results.total}, Created: ${results.created}, Skipped: ${results.skipped}`,
-        { duration: 5000 }
-      );
-      
-      // Show errors if any
-      if (results.errors && results.errors.length > 0) {
-        console.warn('Import errors:', results.errors);
-        toast.error(`${results.errors.length} participants had errors during import`);
-      }
-      
-      setCsvFile(null);
       // Reset file input
-      const fileInput = document.getElementById('csvFile') as HTMLInputElement;
+      const fileInput = document.getElementById('csv-file') as HTMLInputElement;
       if (fileInput) fileInput.value = '';
     } catch (error: any) {
-      const errorMessage = error.response?.data?.error || 'Failed to import CSV file';
-      toast.error(errorMessage);
-      console.error('Error importing CSV:', error);
-    } finally {
-      setSaving(false);
+      toast.error(error.response?.data?.error || 'Failed to import CSV');
+      console.error('CSV import error:', error);
     }
   };
 
-  const handleExportParticipants = async () => {
+  const handleUpdateSettings = async () => {
     try {
-      const response = await adminAPI.exportParticipants();
-      const blob = new Blob([response.data], { type: 'text/csv' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `participants_export_${new Date().toISOString().split('T')[0]}.csv`;
-      a.click();
-      window.URL.revokeObjectURL(url);
-      toast.success('Participants exported successfully');
+      const settingsToUpdate: any = {};
+      if (settings) {
+        Object.keys(settings).forEach(key => {
+          settingsToUpdate[key] = settings[key as keyof CompetitionSettings].value;
+        });
+      }
+
+      await adminAPI.updateSettings(settingsToUpdate);
+      toast.success('Settings updated successfully');
     } catch (error: any) {
-      toast.error('Failed to export participants');
-      console.error('Error exporting participants:', error);
+      toast.error('Failed to update settings');
+      console.error('Update settings error:', error);
     }
   };
 
-  if (!user || user.role !== 'admin') {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary-600"></div>
-      </div>
-    );
-  }
+  const handleCreateUser = async () => {
+    try {
+      await adminAPI.createUser(userForm);
+      toast.success('User created successfully');
+      setIsCreatingUser(false);
+      setUserForm({ username: '', password: '', role: 'invigilator' });
+      fetchData();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to create user');
+    }
+  };
+
+  const handleUpdateUser = async () => {
+    if (!editingUser) return;
+
+    try {
+      await adminAPI.updateUser(editingUser.id, userForm);
+      toast.success('User updated successfully');
+      setEditingUser(null);
+      setUserForm({ username: '', password: '', role: 'invigilator' });
+      fetchData();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to update user');
+    }
+  };
+
+  const handleDeleteUser = async (userId: number) => {
+    if (!confirm('Are you sure you want to delete this user?')) {
+      return;
+    }
+
+    try {
+      await adminAPI.deleteUser(userId);
+      toast.success('User deleted successfully');
+      fetchData();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to delete user');
+    }
+  };
+
+  const startEditUser = (user: User) => {
+    setEditingUser(user);
+    setUserForm({
+      username: user.username,
+      password: '',
+      role: user.role
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingUser(null);
+    setIsCreatingUser(false);
+    setUserForm({ username: '', password: '', role: 'invigilator' });
+  };
+
+  const togglePasswordVisibility = (userId: number) => {
+    setShowPassword(prev => ({
+      ...prev,
+      [userId]: !prev[userId]
+    }));
+  };
+
+  const getRoleColor = (role: string) => {
+    switch (role) {
+      case 'admin': return 'bg-red-100 text-red-800';
+      case 'registration_desk': return 'bg-blue-100 text-blue-800';
+      case 'invigilator': return 'bg-green-100 text-green-800';
+      case 'evaluator': return 'bg-purple-100 text-purple-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getRoleDisplayName = (role: string) => {
+    switch (role) {
+      case 'admin': return 'Admin';
+      case 'registration_desk': return 'Registration Desk';
+      case 'invigilator': return 'Invigilator';
+      case 'evaluator': return 'Evaluator';
+      default: return role;
+    }
+  };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary-600"></div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500"></div>
       </div>
     );
   }
@@ -195,284 +213,281 @@ export default function Settings() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white shadow">
+      <div className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
             <div className="flex items-center">
               <button
-                onClick={() => router.push('/admin/dashboard')}
-                className="mr-4 p-2 text-gray-400 hover:text-gray-600"
+                onClick={() => router.back()}
+                className="mr-4 p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100"
               >
-                <ArrowLeft className="w-5 h-5" />
+                <ArrowLeft className="h-5 w-5" />
               </button>
               <div>
-                <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
-                <p className="text-gray-600">Configure competition settings</p>
+                <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+                <p className="text-sm text-gray-500">Manage competition settings and users</p>
               </div>
             </div>
             <button
-              onClick={() => router.push('/admin/dashboard')}
-              className="flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              onClick={logout}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
             >
-              Back to Dashboard
+              Logout
             </button>
           </div>
         </div>
-      </header>
+      </div>
 
-      {/* Main Content */}
-      <main className="max-w-4xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="space-y-6">
-          {/* Competition Settings */}
-          <div className="bg-white shadow rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4 flex items-center">
-                <SettingsIcon className="w-5 h-5 mr-2" />
-                Competition Settings
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Tab Navigation */}
+        <div className="mb-8">
+          <nav className="flex space-x-8">
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'settings'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <SettingsIcon className="h-5 w-5 inline mr-2" />
+              Competition Settings
+            </button>
+            <button
+              onClick={() => setActiveTab('users')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'users'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <Users className="h-5 w-5 inline mr-2" />
+              User Management
+            </button>
+          </nav>
+        </div>
+
+        {/* Settings Tab */}
+        {activeTab === 'settings' && (
+          <div className="space-y-8">
+            {/* CSV Import Section */}
+            <div className="bg-white shadow rounded-lg p-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Import Participants</h3>
+              <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Competition Name
+                    Upload CSV File
                   </label>
                   <input
-                    type="text"
-                    value={settings.competition_name}
-                    onChange={(e) => setSettings({...settings, competition_name: e.target.value})}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    id="csv-file"
+                    type="file"
+                    accept=".csv"
+                    onChange={handleFileChange}
+                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Competition Date
-                  </label>
-                  <input
-                    type="date"
-                    value={settings.competition_date}
-                    onChange={(e) => setSettings({...settings, competition_date: e.target.value})}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  />
+                <div className="text-sm text-gray-500">
+                  <p className="font-medium mb-2">CSV Format Requirements:</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>Columns: Timestamp of Registration, Full Name, Age, Qualification, Gender, Father Name, Email ID, Phone</li>
+                    <li>First row should contain headers</li>
+                    <li>File should be in CSV format (.csv)</li>
+                  </ul>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Registration Deadline
-                  </label>
-                  <input
-                    type="date"
-                    value={settings.registration_deadline}
-                    onChange={(e) => setSettings({...settings, registration_deadline: e.target.value})}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Max Participants
-                  </label>
-                  <input
-                    type="number"
-                    value={settings.max_participants}
-                    onChange={(e) => setSettings({...settings, max_participants: parseInt(e.target.value)})}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
+                <button
+                  onClick={handleImportFromCSV}
+                  disabled={!selectedFile}
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Import CSV
+                </button>
               </div>
             </div>
-          </div>
 
-          {/* Evaluation Criteria */}
-          <div className="bg-white shadow rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-                Evaluation Criteria (Maximum Points)
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Introduction
-                  </label>
-                  <input
-                    type="number"
-                    value={settings.evaluation_criteria?.introduction_max || 10}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      evaluation_criteria: {
-                        ...settings.evaluation_criteria,
-                        introduction_max: parseInt(e.target.value)
-                      }
-                    })}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Content
-                  </label>
-                  <input
-                    type="number"
-                    value={settings.evaluation_criteria?.content_max || 40}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      evaluation_criteria: {
-                        ...settings.evaluation_criteria,
-                        content_max: parseInt(e.target.value)
-                      }
-                    })}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Conclusion
-                  </label>
-                  <input
-                    type="number"
-                    value={settings.evaluation_criteria?.conclusion_max || 10}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      evaluation_criteria: {
-                        ...settings.evaluation_criteria,
-                        conclusion_max: parseInt(e.target.value)
-                      }
-                    })}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Handwriting
-                  </label>
-                  <input
-                    type="number"
-                    value={settings.evaluation_criteria?.handwriting_max || 10}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      evaluation_criteria: {
-                        ...settings.evaluation_criteria,
-                        handwriting_max: parseInt(e.target.value)
-                      }
-                    })}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Grammar & Spelling
-                  </label>
-                  <input
-                    type="number"
-                    value={settings.evaluation_criteria?.grammar_max || 10}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      evaluation_criteria: {
-                        ...settings.evaluation_criteria,
-                        grammar_max: parseInt(e.target.value)
-                      }
-                    })}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Special Points
-                  </label>
-                  <input
-                    type="number"
-                    value={settings.evaluation_criteria?.special_points_max || 10}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      evaluation_criteria: {
-                        ...settings.evaluation_criteria,
-                        special_points_max: parseInt(e.target.value)
-                      }
-                    })}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Data Management */}
-          <div className="bg-white shadow rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-                Data Management
-              </h3>
-              <div className="space-y-6">
-                {/* CSV Import */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Import Participants from CSV File
-                  </label>
-                  <div className="flex space-x-3">
-                    <input
-                      id="csvFile"
-                      type="file"
-                      accept=".csv"
-                      onChange={handleFileChange}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    />
-                    <button
-                      onClick={handleImportFromCSV}
-                      disabled={saving || !csvFile}
-                      className="flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-                    >
-                      <Upload className="w-4 h-4 mr-2" />
-                      {saving ? 'Importing...' : 'Import'}
-                    </button>
-                  </div>
-                  <div className="mt-2 text-sm text-gray-500">
-                    <p>Select a CSV file to import participant data</p>
-                    {csvFile && (
-                      <p className="text-green-600 font-medium">
-                        Selected: {csvFile.name} ({(csvFile.size / 1024).toFixed(1)} KB)
-                      </p>
-                    )}
-                    <div className="mt-2 p-3 bg-blue-50 rounded-md">
-                      <p className="font-medium text-blue-800 mb-1">Required columns in your CSV file:</p>
-                      <p className="text-blue-700 text-xs">
-                        Column 1, Full Name :, Age :, Qualification :, Gender :, Father's Name :, Email id :, Phone :
-                      </p>
-                      <p className="text-blue-600 text-xs mt-1">
-                        Note: Duplicate participants (by email, name+age, or phone) will be skipped
-                      </p>
+            {/* Competition Settings */}
+            {settings && (
+              <div className="bg-white shadow rounded-lg p-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Competition Settings</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {Object.entries(settings).map(([key, setting]) => (
+                    <div key={key}>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        {setting.description}
+                      </label>
+                      <input
+                        type={key.includes('date') ? 'date' : 'text'}
+                        value={setting.value}
+                        onChange={(e) => setSettings(prev => prev ? {
+                          ...prev,
+                          [key]: { ...setting, value: e.target.value }
+                        } : null)}
+                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      />
                     </div>
+                  ))}
+                </div>
+                <div className="mt-6">
+                  <button
+                    onClick={handleUpdateSettings}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    Update Settings
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Users Tab */}
+        {activeTab === 'users' && (
+          <div className="space-y-6">
+            {/* Add User Button */}
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-medium text-gray-900">User Management</h3>
+              <button
+                onClick={() => setIsCreatingUser(true)}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add User
+              </button>
+            </div>
+
+            {/* User Form Modal */}
+            {(isCreatingUser || editingUser) && (
+              <div className="bg-white shadow rounded-lg p-6">
+                <h4 className="text-lg font-medium text-gray-900 mb-4">
+                  {editingUser ? 'Edit User' : 'Add New User'}
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Username
+                    </label>
+                    <input
+                      type="text"
+                      value={userForm.username}
+                      onChange={(e) => setUserForm(prev => ({ ...prev, username: e.target.value }))}
+                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      placeholder="Enter username"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Password
+                    </label>
+                    <input
+                      type="password"
+                      value={userForm.password}
+                      onChange={(e) => setUserForm(prev => ({ ...prev, password: e.target.value }))}
+                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      placeholder={editingUser ? "Leave blank to keep current" : "Enter password"}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Role
+                    </label>
+                    <select
+                      value={userForm.role}
+                      onChange={(e) => setUserForm(prev => ({ ...prev, role: e.target.value }))}
+                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    >
+                      <option value="invigilator">Invigilator</option>
+                      <option value="evaluator">Evaluator</option>
+                      <option value="registration_desk">Registration Desk</option>
+                      <option value="admin">Admin</option>
+                    </select>
                   </div>
                 </div>
-
-                {/* Export Participants */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Export Participants
-                  </label>
+                <div className="mt-4 flex justify-end space-x-3">
                   <button
-                    onClick={handleExportParticipants}
-                    className="flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    onClick={cancelEdit}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
                   >
-                    <Download className="w-4 h-4 mr-2" />
-                    Export CSV
+                    Cancel
                   </button>
-                  <p className="mt-2 text-sm text-gray-500">
-                    Download all participant data as a CSV file
-                  </p>
+                  <button
+                    onClick={editingUser ? handleUpdateUser : handleCreateUser}
+                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
+                  >
+                    {editingUser ? 'Update User' : 'Create User'}
+                  </button>
                 </div>
+              </div>
+            )}
+
+            {/* Users List */}
+            <div className="bg-white shadow rounded-lg overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h4 className="text-lg font-medium text-gray-900">All Users</h4>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Username
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Role
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Created
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Last Login
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {users.map((user) => (
+                      <tr key={user.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {user.username}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getRoleColor(user.role)}`}>
+                            {getRoleDisplayName(user.role)}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {new Date(user.created_at).toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {user.last_login ? new Date(user.last_login).toLocaleDateString() : 'Never'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={() => startEditUser(user)}
+                              className="text-blue-600 hover:text-blue-900"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteUser(user.id)}
+                              className="text-red-600 hover:text-red-900"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
-
-          {/* Save Button */}
-          <div className="flex justify-end">
-            <button
-              onClick={handleSaveSettings}
-              disabled={saving}
-              className="flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
-            >
-              <Save className="w-5 h-5 mr-2" />
-              {saving ? 'Saving...' : 'Save Settings'}
-            </button>
-          </div>
-        </div>
-      </main>
+        )}
+      </div>
     </div>
   );
 }

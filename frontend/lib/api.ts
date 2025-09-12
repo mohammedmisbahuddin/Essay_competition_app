@@ -57,8 +57,8 @@ export const participantsAPI = {
   getAll: (params?: any) =>
     api.get('/participants', { params }),
   
-  search: (identifier: string) =>
-    api.get(`/participants/search/${identifier}`),
+  search: (searchTerm: string) =>
+    api.get('/participants/search', { params: { q: searchTerm } }),
   
   validate: (registrationNumber: string) =>
     api.get(`/participants/validate/${registrationNumber}`),
@@ -75,17 +75,20 @@ export const participantsAPI = {
 
 // Evaluations API
 export const evaluationsAPI = {
-  getForm: (registrationNumber: string) =>
-    api.get(`/evaluations/participant/${registrationNumber}`),
+  getByParticipant: (participantId: number) =>
+    api.get(`/evaluations/participant/${participantId}`),
   
-  submit: (evaluationData: any) =>
+  create: (evaluationData: any) =>
     api.post('/evaluations', evaluationData),
-  
-  getMyEvaluations: (params?: any) =>
-    api.get('/evaluations/my-evaluations', { params }),
   
   update: (evaluationId: number, evaluationData: any) =>
     api.put(`/evaluations/${evaluationId}`, evaluationData),
+  
+  confirm: (evaluationId: number) =>
+    api.post(`/evaluations/${evaluationId}/confirm`),
+  
+  getMyEvaluations: (params?: any) =>
+    api.get('/evaluations/my-evaluations', { params }),
 };
 
 // Admin API
@@ -101,6 +104,15 @@ export const adminAPI = {
   
   getUsers: () =>
     api.get('/admin/users'),
+  
+  createUser: (userData: { username: string; password: string; role: string }) =>
+    api.post('/admin/users', userData),
+  
+  updateUser: (id: number, userData: { username: string; password?: string; role: string }) =>
+    api.put(`/admin/users/${id}`, userData),
+  
+  deleteUser: (id: number) =>
+    api.delete(`/admin/users/${id}`),
   
   updateUserStatus: (userId: number, isActive: boolean) =>
     api.patch(`/admin/users/${userId}/status`, { is_active: isActive }),

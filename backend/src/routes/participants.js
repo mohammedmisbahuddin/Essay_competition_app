@@ -1,10 +1,41 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { getQuery, allQuery, runQuery } = require('../utils/database');
-const { authenticateToken, requireRegistrationDesk, requireInvigilator } = require('../middleware/auth');
+const { authenticateToken, requireRole, requireRegistrationDesk, requireInvigilator } = require('../middleware/auth');
 const { generateRegistrationNumber } = require('../utils/helpers');
 
 const router = express.Router();
+
+// Search participants (for invigilators)
+router.get('/search', authenticateToken, requireInvigilator, async (req, res) => {
+  try {
+    const { q: searchTerm } = req.query;
+    
+    if (!searchTerm || searchTerm.trim() === '') {
+      return res.json({ participants: [] });
+    }
+
+    const searchPattern = `%${searchTerm}%`;
+    const participantsQuery = `
+      SELECT id, registration_number, full_name, email, phone, gender, 
+             age, qualification, father_name, registration_timestamp, 
+             is_spot_registration, registration_date, created_at
+      FROM participants 
+      WHERE (full_name LIKE ? OR registration_number LIKE ? OR email LIKE ? OR phone LIKE ?)
+      ORDER BY full_name ASC
+      LIMIT 20
+    `;
+    
+    const participants = await allQuery(participantsQuery, [
+      searchPattern, searchPattern, searchPattern, searchPattern
+    ]);
+
+    res.json({ participants });
+  } catch (error) {
+    console.error('Search participants error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 // Get all participants (with pagination and search)
 router.get('/', authenticateToken, async (req, res) => {
@@ -84,8 +115,8 @@ router.get('/search/:identifier', authenticateToken, async (req, res) => {
   }
 });
 
-// Validate registration number (for invigilators)
-router.get('/validate/:registrationNumber', authenticateToken, requireInvigilator, async (req, res) => {
+// Validate registration number (for invigilators and evaluators)
+router.get('/validate/:registrationNumber', authenticateToken, requireRole(['invigilator', 'evaluator', 'admin']), async (req, res) => {
   try {
     const { registrationNumber } = req.params;
     
@@ -104,9 +135,17 @@ router.get('/validate/:registrationNumber', authenticateToken, requireInvigilato
     res.json({ 
       valid: true, 
       participant: {
+        id: participant.id,
         registration_number: participant.registration_number,
         full_name: participant.full_name,
-        gender: participant.gender
+        email: participant.email,
+        phone: participant.phone,
+        gender: participant.gender,
+        age: participant.age,
+        qualification: participant.qualification,
+        father_name: participant.father_name,
+        registration_timestamp: participant.registration_timestamp,
+        is_spot_registration: participant.is_spot_registration
       }
     });
   } catch (error) {

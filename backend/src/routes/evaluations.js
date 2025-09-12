@@ -5,6 +5,162 @@ const { authenticateToken, requireEvaluator } = require('../middleware/auth');
 
 const router = express.Router();
 
+// Get evaluation by participant ID
+router.get('/participant/:participantId', authenticateToken, requireEvaluator, async (req, res) => {
+  try {
+    const { participantId } = req.params;
+
+    const evaluation = await getQuery(
+      `SELECT * FROM evaluations 
+       WHERE participant_id = ? AND evaluator_id = ?`,
+      [participantId, req.user.id]
+    );
+
+    res.json({ evaluation });
+  } catch (error) {
+    console.error('Get evaluation error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Create new evaluation
+router.post('/', authenticateToken, requireEvaluator, async (req, res) => {
+  try {
+    const {
+      participant_id,
+      introduction,
+      content,
+      conclusion,
+      handwriting,
+      grammar_spelling,
+      special_points,
+      total_marks,
+      comments
+    } = req.body;
+
+    // Check if evaluation already exists
+    const existingEvaluation = await getQuery(
+      `SELECT id FROM evaluations 
+       WHERE participant_id = ? AND evaluator_id = ?`,
+      [participant_id, req.user.id]
+    );
+
+    if (existingEvaluation) {
+      return res.status(400).json({ error: 'Evaluation already exists for this participant' });
+    }
+
+    const result = await runQuery(
+      `INSERT INTO evaluations 
+       (participant_id, evaluator_id, introduction_marks, content_marks, conclusion_marks, 
+        handwriting_marks, grammar_marks, special_points, comments, is_submitted)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        participant_id, req.user.id, introduction, content, conclusion,
+        handwriting, grammar_spelling, special_points, comments || '', false
+      ]
+    );
+
+    const evaluation = await getQuery(
+      'SELECT * FROM evaluations WHERE id = ?',
+      [result.lastID]
+    );
+
+    res.status(201).json({ evaluation });
+  } catch (error) {
+    console.error('Create evaluation error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update existing evaluation
+router.put('/:id', authenticateToken, requireEvaluator, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      introduction,
+      content,
+      conclusion,
+      handwriting,
+      grammar_spelling,
+      special_points,
+      total_marks,
+      comments
+    } = req.body;
+
+    // Check if evaluation exists and belongs to this evaluator
+    const existingEvaluation = await getQuery(
+      'SELECT * FROM evaluations WHERE id = ? AND evaluator_id = ?',
+      [id, req.user.id]
+    );
+
+    if (!existingEvaluation) {
+      return res.status(404).json({ error: 'Evaluation not found' });
+    }
+
+    if (existingEvaluation.is_submitted) {
+      return res.status(400).json({ error: 'Cannot update submitted evaluation' });
+    }
+
+    await runQuery(
+      `UPDATE evaluations SET 
+       introduction_marks = ?, content_marks = ?, conclusion_marks = ?, handwriting_marks = ?,
+       grammar_marks = ?, special_points = ?, 
+       comments = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [
+        introduction, content, conclusion, handwriting,
+        grammar_spelling, special_points, comments || '', id
+      ]
+    );
+
+    const evaluation = await getQuery(
+      'SELECT * FROM evaluations WHERE id = ?',
+      [id]
+    );
+
+    res.json({ evaluation });
+  } catch (error) {
+    console.error('Update evaluation error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Confirm evaluation
+router.post('/:id/confirm', authenticateToken, requireEvaluator, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if evaluation exists and belongs to this evaluator
+    const existingEvaluation = await getQuery(
+      'SELECT * FROM evaluations WHERE id = ? AND evaluator_id = ?',
+      [id, req.user.id]
+    );
+
+    if (!existingEvaluation) {
+      return res.status(404).json({ error: 'Evaluation not found' });
+    }
+
+    if (existingEvaluation.is_submitted) {
+      return res.status(400).json({ error: 'Evaluation already submitted' });
+    }
+
+    await runQuery(
+      'UPDATE evaluations SET is_submitted = true, submitted_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [id]
+    );
+
+    const evaluation = await getQuery(
+      'SELECT * FROM evaluations WHERE id = ?',
+      [id]
+    );
+
+    res.json({ evaluation });
+  } catch (error) {
+    console.error('Confirm evaluation error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Get evaluation form for a participant
 router.get('/participant/:registrationNumber', authenticateToken, requireEvaluator, async (req, res) => {
   try {
