@@ -8,12 +8,13 @@ WORKDIR /app/frontend
 COPY frontend/package*.json ./
 
 # Install frontend dependencies (including devDependencies for build)
-RUN npm ci
+RUN npm install
 
 # Copy frontend source code
 COPY frontend/ ./
 
 # Build frontend
+RUN ls -la node_modules/.bin/ | grep next || echo "Next.js not found in node_modules"
 RUN npm run build
 
 # Stage 2: Build Backend
