@@ -1,6 +1,4 @@
-# Docker ignore file for backend-only deployment
-frontend/
-frontend/**
+# Docker ignore file for single service deployment
 node_modules/
 .git/
 *.log
