@@ -19,7 +19,7 @@ const PORT = process.env.PORT || 5001;
 // Security middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: process.env.FRONTEND_URL || '*',
   credentials: true
 }));
 
@@ -33,6 +33,9 @@ app.use(limiter);
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Serve static files from frontend build
+app.use(express.static('public'));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -49,9 +52,14 @@ app.use('/api/google-sheets', googleSheetsRoutes);
 // Error handling middleware
 app.use(errorHandler);
 
-// 404 handler
-app.use('*', (req, res) => {
-  res.status(404).json({ error: 'Route not found' });
+// Serve frontend for non-API routes (SPA routing)
+app.get('*', (req, res) => {
+  // If it's an API route, return 404
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'API route not found' });
+  }
+  // Otherwise serve the frontend
+  res.sendFile('index.html', { root: 'public' });
 });
 
 // Initialize database and start server

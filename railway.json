@@ -1,5 +1,22 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
-  "description": "Essay Competition Management App - Monorepo with separate services",
-  "note": "This repository contains both frontend and backend. Deploy them as separate Railway services using the configurations in frontend/ and backend/ directories."
+  "description": "Essay Competition Management App - Single Service Deployment",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile"
+  },
+  "deploy": {
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 100,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  },
+  "environments": {
+    "production": {
+      "variables": {
+        "NODE_ENV": "production",
+        "PORT": "5001"
+      }
+    }
+  }
 }
