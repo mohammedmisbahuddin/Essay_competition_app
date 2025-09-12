@@ -4,16 +4,13 @@ FROM node:18-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
-# Copy frontend package files
-COPY frontend/package*.json ./
+# Copy frontend source code
+COPY frontend/ ./
 
 # Install frontend dependencies (including devDependencies for build)
 RUN npm config set fund false && \
     npm config set audit false && \
     npm install
-
-# Copy frontend source code
-COPY frontend/ ./
 
 # Build frontend
 RUN echo "Checking if Next.js is installed..." && \
