@@ -18,7 +18,10 @@ RUN npm config set fund false && \
     npm install --omit=dev --no-optional
 
 # Copy backend source code
-COPY backend/ ./
+COPY backend/src ./src
+COPY backend/database ./database
+COPY backend/uploads ./uploads
+COPY backend/env.example ./env.example
 
 # Create necessary directories
 RUN mkdir -p /app/database /app/uploads
