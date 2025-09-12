@@ -13,13 +13,10 @@ RUN npm config set fund false && \
     echo "Installing dependencies..." && \
     npm install && \
     echo "Installation complete. Checking installed packages..." && \
-    ls -la node_modules/ | head -10 && \
-    echo "Checking for Next.js..." && \
-    ls -la node_modules/next/ || echo "Next.js package not found"
+    ls -la node_modules/ | head -10
 
 # Build frontend
-RUN echo "Checking if Next.js is installed..." && \
-    ls -la node_modules/.bin/next || echo "Next.js binary not found" && npm i next && \
+RUN echo "Building React app..." && \
     npm run build
 
 # Stage 2: Build Backend
@@ -58,7 +55,7 @@ WORKDIR /app
 COPY --from=backend-builder /app/backend ./
 
 # Copy frontend build from builder stage
-COPY --from=frontend-builder /app/frontend/out ./public
+COPY --from=frontend-builder /app/frontend/build ./public
 
 # Create necessary directories
 RUN mkdir -p /app/database /app/uploads
