@@ -10,7 +10,12 @@ COPY frontend/ ./
 # Install frontend dependencies (including devDependencies for build)
 RUN npm config set fund false && \
     npm config set audit false && \
-    npm install
+    echo "Installing dependencies..." && \
+    npm install && \
+    echo "Installation complete. Checking installed packages..." && \
+    ls -la node_modules/ | head -10 && \
+    echo "Checking for Next.js..." && \
+    ls -la node_modules/next/ || echo "Next.js package not found"
 
 # Build frontend
 RUN echo "Checking if Next.js is installed..." && \
