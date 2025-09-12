@@ -1,13 +1,12 @@
 {
   "name": "essay-competition-app",
   "version": "1.0.0",
-  "description": "Essay Competition Management Application",
+  "description": "Essay Competition Management Application - Monorepo (deploy frontend and backend separately)",
   "main": "index.js",
   "scripts": {
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:frontend": "cd frontend && npm run dev",
     "dev:backend": "cd backend && npm run dev",
-    "build": "cd frontend && npm run build && cd ../backend && npm run build",
     "start": "cd backend && npm start",
     "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install"
   },

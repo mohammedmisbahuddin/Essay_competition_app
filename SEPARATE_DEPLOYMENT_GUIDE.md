@@ -33,7 +33,8 @@ This guide will help you deploy the Essay Competition Management App as three se
 2. Click "New Project"
 3. Click "New" → "Database" → "PostgreSQL"
 4. Railway will create a PostgreSQL database
-5. Note the `DATABASE_URL` from the database service
+5. Note the `DATABASE_URL` from the database service 
+postgresql://postgres:zRiUwAAXIgDcWykrNLZEFKtGpgbqlvjj@postgres.railway.internal:5432/railway
 
 ### 1.2 Database Configuration
 - **Service Name**: `essay-competition-db`
