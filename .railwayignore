@@ -1,5 +1,7 @@
 # Railway ignore file - exclude frontend from backend deployment
 frontend/
+frontend/**
+frontend/**/*
 node_modules/
 .git/
 *.log
@@ -8,3 +10,8 @@ node_modules/
 .env.development.local
 .env.test.local
 .env.production.local
+docs/
+docker/
+logs/
+*.md
+!DEPLOYMENT_GUIDE.md

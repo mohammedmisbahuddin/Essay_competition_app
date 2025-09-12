@@ -1,0 +1,17 @@
+{
+  "name": "essay-competition-backend",
+  "version": "1.0.0",
+  "description": "Backend API for Essay Competition Management",
+  "main": "backend/src/server.js",
+  "scripts": {
+    "start": "cd backend && npm start",
+    "dev": "cd backend && npm run dev",
+    "install": "cd backend && npm install"
+  },
+  "keywords": ["essay", "competition", "management", "backend", "api"],
+  "author": "Your Name",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

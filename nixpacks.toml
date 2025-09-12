@@ -7,6 +7,11 @@ cmds = [
   "cd backend && npm install --production=false"
 ]
 
+[phases.build]
+cmds = [
+  "echo 'Backend-only deployment - skipping frontend build'"
+]
+
 [start]
 cmd = "npm start"
 
