@@ -33,8 +33,7 @@ COPY backend/package*.json ./
 RUN npm config set fund false && \
     npm config set audit false && \
     npm config set update-notifier false && \
-    npm cache clean --force && \
-    npm install --omit=dev --no-optional
+    npm ci --omit=dev || npm install --omit=dev
 
 # Copy backend source code
 COPY backend/src ./src
