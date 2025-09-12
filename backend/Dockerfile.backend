@@ -8,7 +8,7 @@ RUN apk add --no-cache libc6-compat python3 make g++
 WORKDIR /app
 
 # Copy backend package files first for better caching
-COPY backend/package*.json ./
+COPY package*.json ./
 
 # Configure npm and install dependencies
 RUN npm config set fund false && \
