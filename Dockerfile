@@ -19,7 +19,7 @@ RUN npm config set fund false && \
 
 # Build frontend
 RUN echo "Checking if Next.js is installed..." && \
-    ls -la node_modules/.bin/next || echo "Next.js binary not found" && \
+    ls -la node_modules/.bin/next || echo "Next.js binary not found" && npm i next && \
     npm run build
 
 # Stage 2: Build Backend
