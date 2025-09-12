@@ -10,8 +10,8 @@ WORKDIR /app
 # Copy backend package files
 COPY backend/package*.json ./
 
-# Install ALL dependencies (including devDependencies for production)
-RUN npm install
+# Install dependencies with error handling
+RUN npm ci --only=production --no-audit --no-fund || npm install --production --no-audit --no-fund
 
 # Copy backend source code
 COPY backend/ ./

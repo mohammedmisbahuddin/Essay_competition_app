@@ -3,7 +3,9 @@ nixPkgs = ["nodejs"]
 
 [phases.install]
 cmds = [
-  "npm install"
+  "npm config set fund false",
+  "npm config set audit false", 
+  "npm ci --omit=dev || npm install --omit=dev"
 ]
 
 [start]
