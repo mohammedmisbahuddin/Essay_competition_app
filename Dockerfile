@@ -10,13 +10,15 @@ COPY frontend/package*.json ./
 # Install frontend dependencies (including devDependencies for build)
 RUN npm config set fund false && \
     npm config set audit false && \
-    npm ci || npm install
+    npm install
 
 # Copy frontend source code
 COPY frontend/ ./
 
 # Build frontend
-RUN npm run build
+RUN echo "Checking if Next.js is installed..." && \
+    ls -la node_modules/.bin/next || echo "Next.js binary not found" && \
+    npm run build
 
 # Stage 2: Build Backend
 FROM node:18-alpine AS backend-builder
