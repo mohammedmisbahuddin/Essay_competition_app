@@ -11,7 +11,9 @@ WORKDIR /app
 COPY backend/package*.json ./
 
 # Install dependencies with error handling
-RUN npm ci --only=production --no-audit --no-fund || npm install --production --no-audit --no-fund
+RUN npm config set fund false && \
+    npm config set audit false && \
+    npm ci --omit=dev || npm install --omit=dev
 
 # Copy backend source code
 COPY backend/ ./
