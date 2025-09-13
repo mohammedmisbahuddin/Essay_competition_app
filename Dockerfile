@@ -1,57 +1,83 @@
-# Multi-stage build for Essay Competition Management App
-FROM node:18-alpine AS base
+# Multi-stage Dockerfile for Essay Competition App - Single Service
+# Stage 1: Build Frontend
+FROM node:18-alpine AS frontend-builder
 
-# Install dependencies only when needed
-FROM base AS deps
-RUN apk add --no-cache libc6-compat
-WORKDIR /app
+WORKDIR /app/frontend
 
-# Install dependencies
-COPY package.json package-lock.json* ./
-RUN npm ci --only=production
+# Copy frontend source code
+COPY frontend/ ./
 
-# Rebuild the source code only when needed
-FROM base AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
-
-# Build backend
-WORKDIR /app/backend
-RUN npm install
-RUN npm run build || echo "No build step for backend"
+# Install frontend dependencies (including devDependencies for build)
+RUN npm config set fund false && \
+    npm config set audit false && \
+    echo "Installing dependencies..." && \
+    npm install --legacy-peer-deps && \
+    echo "Installation complete. Checking installed packages..." && \
+    ls -la node_modules/ | head -10
 
 # Build frontend
-WORKDIR /app/frontend
-RUN npm install
-RUN npm run build
+RUN echo "Building React app..." && \
+    npm run build
 
-# Production image, copy all the files and run the app
-FROM base AS runner
+# Stage 2: Build Backend
+FROM node:18-alpine AS backend-builder
+
+WORKDIR /app/backend
+
+# Install system dependencies
+RUN apk add --no-cache libc6-compat python3 make g++
+
+# Copy backend package files
+COPY backend/package*.json ./
+
+# Install backend dependencies
+RUN npm config set fund false && \
+    npm config set audit false && \
+    npm config set update-notifier false && \
+    npm ci --omit=dev || npm install --omit=dev
+
+# Copy backend source code
+COPY backend/src ./src
+COPY backend/env.example ./env.example
+
+# Create directories (database will be initialized by the app)
+RUN mkdir -p ./database ./uploads
+
+# Stage 3: Production Image
+FROM node:18-alpine AS production
+
+# Install system dependencies
+RUN apk add --no-cache libc6-compat python3 make g++
+
 WORKDIR /app
 
-# Create non-root user
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+# Copy backend from builder stage
+COPY --from=backend-builder /app/backend ./
 
-# Copy built application
-COPY --from=builder /app/backend ./backend
-COPY --from=builder /app/frontend/.next/standalone ./
-COPY --from=builder /app/frontend/.next/static ./frontend/.next/static
-COPY --from=builder /app/frontend/public ./frontend/public
+# Copy frontend build from builder stage
+COPY --from=frontend-builder /app/frontend/build ./public
 
-# Create database directory
-RUN mkdir -p /app/database
-RUN chown -R nextjs:nodejs /app
+# Create necessary directories
+RUN mkdir -p /app/database /app/uploads
 
-USER nextjs
+# Create non-root user for security
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 backend && \
+    chown -R backend:nodejs /app
 
-EXPOSE 3000
-EXPOSE 5000
+# Switch to non-root user
+USER backend
 
-ENV PORT 3000
-ENV NODE_ENV production
+# Expose port
+EXPOSE 5001
 
-# Start both frontend and backend
-CMD ["sh", "-c", "cd backend && npm start & cd frontend && npm start"]
+# Set environment variables
+ENV NODE_ENV=production
+ENV PORT=5001
 
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:5001/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
+
+# Start the backend server
+CMD ["npm", "start"]
