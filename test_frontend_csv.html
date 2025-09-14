@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Import Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        .info { background-color: #d1ecf1; border-color: #bee5eb; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        input[type="file"] { margin: 10px 0; }
+        #results { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>CSV Import Functionality Test</h1>
+    
+    <div class="test-section info">
+        <h3>Test Instructions</h3>
+        <ol>
+            <li>Make sure backend server is running on port 5001</li>
+            <li>Make sure frontend server is running on port 3000</li>
+            <li>Login as admin (admin/admin123) in the main application</li>
+            <li>Go to Admin > Settings page</li>
+            <li>Test CSV import functionality</li>
+        </ol>
+    </div>
+    
+    <div class="test-section">
+        <h3>API Test</h3>
+        <button onclick="testAPI()">Test Backend API</button>
+        <div id="api-results"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>File Upload Test</h3>
+        <input type="file" id="csvFile" accept=".csv">
+        <button onclick="testFileUpload()">Test File Upload</button>
+        <div id="upload-results"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>CSV Validation Test</h3>
+        <button onclick="testCSVValidation()">Test CSV Validation</button>
+        <div id="validation-results"></div>
+    </div>
+    
+    <div id="results"></div>
+
+    <script>
+        async function testAPI() {
+            const resultsDiv = document.getElementById('api-results');
+            resultsDiv.innerHTML = 'Testing...';
+            
+            try {
+                // Test login
+                const loginResponse = await fetch('http://localhost:5001/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: 'admin', password: 'admin123' })
+                });
+                
+                if (loginResponse.ok) {
+                    const loginData = await loginResponse.json();
+                    resultsDiv.innerHTML = '<div class="success">✅ Backend API is working. Token obtained.</div>';
+                    return loginData.token;
+                } else {
+                    resultsDiv.innerHTML = '<div class="error">❌ Backend API not responding</div>';
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = '<div class="error">❌ Backend API not accessible: ' + error.message + '</div>';
+            }
+        }
+        
+        async function testFileUpload() {
+            const fileInput = document.getElementById('csvFile');
+            const resultsDiv = document.getElementById('upload-results');
+            
+            if (!fileInput.files[0]) {
+                resultsDiv.innerHTML = '<div class="error">❌ Please select a CSV file first</div>';
+                return;
+            }
+            
+            resultsDiv.innerHTML = 'Uploading...';
+            
+            try {
+                const token = await testAPI();
+                if (!token) return;
+                
+                const formData = new FormData();
+                formData.append('csvFile', fileInput.files[0]);
+                
+                const response = await fetch('http://localhost:5001/api/admin/import/csv', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: formData
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    resultsDiv.innerHTML = `
+                        <div class="success">
+                            ✅ File upload successful!<br>
+                            Results: ${JSON.stringify(data.results, null, 2)}
+                        </div>
+                    `;
+                } else {
+                    const error = await response.text();
+                    resultsDiv.innerHTML = '<div class="error">❌ Upload failed: ' + error + '</div>';
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = '<div class="error">❌ Upload error: ' + error.message + '</div>';
+            }
+        }
+        
+        function testCSVValidation() {
+            const resultsDiv = document.getElementById('validation-results');
+            resultsDiv.innerHTML = 'Testing CSV validation...';
+            
+            // Create test CSV content
+            const testCSV = `Timestamp of Registration,Full Name :,Age :,Qualification :,Gender :,Father's Name :,Email id :,Phone :
+2024-01-15 10:30:00,John Doe,25,Graduate,male,Robert Doe,john.doe@email.com,1234567890
+2024-01-15 11:00:00,Jane Smith,23,Post Graduate,female,Michael Smith,jane.smith@email.com,0987654321
+2024-01-15 11:30:00,Bob Johnson,28,Graduate,male,David Johnson,bob.johnson@email.com,1122334455`;
+            
+            // Create and download test CSV
+            const blob = new Blob([testCSV], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'test_participants.csv';
+            a.click();
+            window.URL.revokeObjectURL(url);
+            
+            resultsDiv.innerHTML = '<div class="success">✅ Test CSV file downloaded. Use this file to test the import functionality.</div>';
+        }
+        
+        // Auto-test on page load
+        window.onload = function() {
+            testAPI();
+        };
+    </script>
+</body>
+</html>

@@ -198,7 +198,7 @@ router.post('/', [
     const result = await runQuery(
       `INSERT INTO participants 
        (registration_number, full_name, email, phone, gender, age, qualification, father_name, is_spot_registration) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, true)`,
       [registrationNumber, full_name, email, phone, gender, age, qualification, father_name]
     );
 

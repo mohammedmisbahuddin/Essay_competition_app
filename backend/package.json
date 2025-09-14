@@ -26,6 +26,8 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
+    "axios": "^1.12.1",
+    "form-data": "^4.0.4",
     "nodemon": "^3.0.2"
   }
 }
