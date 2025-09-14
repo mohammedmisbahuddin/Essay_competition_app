@@ -19,4 +19,4 @@ fi
 mkdir -p uploads
 
 echo "✅ Dependencies ready, starting server..."
-npm start
+npm run start

@@ -1,4 +1,4 @@
-# Use Node.js 18 Alpine as base image
+# Simple Dockerfile for testing
 FROM node:18-alpine
 
 # Set working directory
@@ -8,16 +8,13 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN npm install
 
 # Copy source code
 COPY . .
 
 # Create uploads directory
 RUN mkdir -p uploads
-
-# Make startup script executable
-RUN chmod +x start.sh
 
 # Expose port
 EXPOSE 5001
@@ -26,5 +23,5 @@ EXPOSE 5001
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD node -e "require('http').get('http://localhost:5001/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
 
-# Start the application using the startup script
-CMD ["./start.sh"]
+# Start the application directly
+CMD ["node", "src/server.js"]
