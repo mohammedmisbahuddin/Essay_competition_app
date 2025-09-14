@@ -1,30 +1,47 @@
-# Use Node.js 18 Alpine as base image
-FROM node:18-alpine
+# Use Python 3.11 slim image
+FROM python:3.11-slim
 
-# Set working directory
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Set work directory
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Install system dependencies
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        postgresql-client \
+        curl \
+        build-essential \
+        libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install dependencies
-RUN npm ci --only=production
+# Install Python dependencies
+COPY requirements.txt /app/
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source code
-COPY . .
+# Copy project
+COPY . /app/
 
-# Create uploads directory
-RUN mkdir -p uploads
+# Create directories for static and media files
+RUN mkdir -p /app/staticfiles /app/media
 
-# Make startup script executable
-RUN chmod +x start.sh
+# Collect static files
+RUN python manage.py collectstatic --noinput
+
+# Create a non-root user
+RUN adduser --disabled-password --gecos '' appuser && \
+    chown -R appuser:appuser /app
+USER appuser
 
 # Expose port
-EXPOSE 5001
+EXPOSE 8000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:5001/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health/ || exit 1
 
-# Start the application using the startup script
-CMD ["./start.sh"]
+# Default command
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]

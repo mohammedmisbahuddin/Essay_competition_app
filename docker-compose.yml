@@ -1,44 +1,55 @@
 version: '3.8'
 
 services:
-  app:
-    build: .
-    ports:
-      - "3000:3000"
-      - "5000:5000"
+  db:
+    image: postgres:16
     environment:
-      - NODE_ENV=production
-      - PORT=5000
-      - DB_PATH=/app/database/competition.db
-      - JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
-      - JWT_EXPIRES_IN=24h
-      - FRONTEND_URL=http://localhost:3000
-      - GOOGLE_SHEETS_API_KEY=${GOOGLE_SHEETS_API_KEY}
-    volumes:
-      - ./database:/app/database
-      - ./logs:/app/logs
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # Optional: Add PostgreSQL for production
-  postgres:
-    image: postgres:15-alpine
-    environment:
-      - POSTGRES_DB=essay_competition
-      - POSTGRES_USER=admin
-      - POSTGRES_PASSWORD=password
+      POSTGRES_DB: essay_competition_django
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
-    restart: unless-stopped
-    profiles:
-      - production
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: .
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py collectstatic --noinput &&
+             python docker_setup.py &&
+             python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - .:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=True
+      - DB_NAME=essay_competition_django
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres123
+      - DB_HOST=db
+      - DB_PORT=5432
+      - SECRET_KEY=django-insecure-777r==0)tg89qfw*#=h+c44t$^kj8eqkiv+=z-$^!z!@^rkscs
+      - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
+      - FRONTEND_URL=http://localhost:3000
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   postgres_data:
-
+  static_volume:
+  media_volume:

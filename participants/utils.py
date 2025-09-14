@@ -1,0 +1,150 @@
+import re
+from datetime import datetime
+from django.db import models
+from .models import Participant
+
+
+def generate_registration_number():
+    """
+    Generate unique registration number
+    """
+    prefix = 'REG'
+    year = datetime.now().year % 100  # Last 2 digits of year
+    
+    # Get the last registration number for this year
+    last_reg = Participant.objects.filter(
+        registration_number__startswith=f"{prefix}{year:02d}"
+    ).order_by('-id').first()
+    
+    next_number = 1
+    if last_reg and last_reg.registration_number:
+        try:
+            last_number = int(last_reg.registration_number[-4:])
+            next_number = last_number + 1
+        except (ValueError, IndexError):
+            next_number = 1
+    
+    # Format as REG25001, REG25002, etc.
+    registration_number = f"{prefix}{year:02d}{next_number:04d}"
+    
+    # Double-check uniqueness
+    while Participant.objects.filter(registration_number=registration_number).exists():
+        next_number += 1
+        registration_number = f"{prefix}{year:02d}{next_number:04d}"
+    
+    return registration_number
+
+
+def clean_participant_data(raw_data):
+    """
+    Clean and validate participant data from CSV
+    """
+    cleaned_data = []
+    seen_emails = set()
+    seen_phones = set()
+    
+    for row in raw_data:
+        # Skip empty rows
+        if not (row.get('Full Name :') or row.get('full_name')):
+            continue
+        
+        participant = {
+            'full_name': (row.get('Full Name :') or row.get('full_name', '')).strip(),
+            'email': (row.get('Email id :') or row.get('email_id', '')).strip().lower(),
+            'phone': (row.get('Phone :') or row.get('phone', '')).strip(),
+            'gender': (row.get('Gender :') or row.get('gender', '')).strip().lower(),
+            'age': None,
+            'qualification': (row.get('Qualification :') or row.get('qualification', '')).strip(),
+            'father_name': (row.get("Father's Name :") or row.get('fathername', '')).strip(),
+            'registration_timestamp': None
+        }
+        
+        # Validate required fields
+        if not participant['full_name']:
+            continue
+        
+        # Check for duplicates based on email or phone
+        if participant['email'] and participant['email'] in seen_emails:
+            continue
+        if participant['phone'] and participant['phone'] in seen_phones:
+            continue
+        
+        # Validate gender
+        if participant['gender'] and participant['gender'] not in ['male', 'female', 'other']:
+            participant['gender'] = 'other'
+        
+        # Validate email format
+        if participant['email'] and not is_valid_email(participant['email']):
+            participant['email'] = None
+        
+        # Validate phone format
+        if participant['phone'] and not is_valid_phone(participant['phone']):
+            participant['phone'] = None
+        
+        # Parse age
+        try:
+            age_value = row.get('Age :') or row.get('age')
+            if age_value:
+                age = int(age_value)
+                if 1 <= age <= 100:
+                    participant['age'] = age
+        except (ValueError, TypeError):
+            pass
+        
+        # Parse registration timestamp
+        timestamp_value = row.get('Column 1') or row.get('timestamp_of_registration')
+        if timestamp_value:
+            try:
+                parsed_date = datetime.fromisoformat(timestamp_value.replace('Z', '+00:00'))
+                participant['registration_timestamp'] = parsed_date
+            except (ValueError, TypeError):
+                pass
+        
+        cleaned_data.append(participant)
+        
+        if participant['email']:
+            seen_emails.add(participant['email'])
+        if participant['phone']:
+            seen_phones.add(participant['phone'])
+    
+    return cleaned_data
+
+
+def is_valid_email(email):
+    """
+    Validate email format
+    """
+    email_regex = r'^[^\s@]+@[^\s@]+\.[^\s@]+$'
+    return re.match(email_regex, email) is not None
+
+
+def is_valid_phone(phone):
+    """
+    Validate phone format
+    """
+    phone_regex = r'^[\+]?[1-9][\d]{0,15}$'
+    cleaned_phone = re.sub(r'[\s\-\(\)]', '', phone)
+    return re.match(phone_regex, cleaned_phone) is not None
+
+
+def generate_statistics():
+    """
+    Generate statistics for admin dashboard
+    """
+    stats = {}
+    
+    # Total participants
+    stats['total_participants'] = Participant.objects.count()
+    
+    # Participants by gender
+    gender_stats = Participant.objects.values('gender').annotate(
+        count=models.Count('id')
+    ).order_by('gender')
+    stats['gender_distribution'] = list(gender_stats)
+    
+    # Spot registrations
+    stats['spot_registrations'] = Participant.objects.filter(
+        is_spot_registration=True
+    ).count()
+    
+    return stats
