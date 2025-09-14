@@ -16,9 +16,6 @@ COPY . .
 # Create uploads directory
 RUN mkdir -p uploads
 
-# Set working directory to backend for the application
-WORKDIR /app
-
 # Expose port
 EXPOSE 5001
 
