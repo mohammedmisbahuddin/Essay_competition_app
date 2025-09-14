@@ -9,11 +9,14 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
+    console.log('Home page - loading:', loading, 'user:', user);
     if (!loading) {
       if (user) {
+        console.log('User found, redirecting based on role:', user.role);
         // Redirect based on user role
         switch (user.role) {
           case 'admin':
+            console.log('Redirecting to admin dashboard');
             router.push('/admin/dashboard');
             break;
           case 'registration_desk':
@@ -29,6 +32,7 @@ export default function Home() {
             router.push('/login');
         }
       } else {
+        console.log('No user found, redirecting to login');
         router.push('/login');
       }
     }

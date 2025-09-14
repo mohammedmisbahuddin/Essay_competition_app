@@ -180,7 +180,7 @@ const generateStatistics = async () => {
     const spotRegistrations = await getQuery(`
       SELECT COUNT(*) as count 
       FROM participants 
-      WHERE is_spot_registration = 1
+      WHERE is_spot_registration = true
     `);
     stats.spotRegistrations = spotRegistrations.count;
 
@@ -188,7 +188,7 @@ const generateStatistics = async () => {
     const evaluationsCompleted = await getQuery(`
       SELECT COUNT(*) as count 
       FROM evaluations 
-      WHERE is_submitted = 1
+      WHERE is_submitted = true
     `);
     stats.evaluationsCompleted = evaluationsCompleted.count;
 

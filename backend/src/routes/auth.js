@@ -22,7 +22,7 @@ router.post('/login', [
 
     // Find user by username or email
     const user = await getQuery(
-      'SELECT * FROM users WHERE (username = ? OR email = ?) AND is_active = 1',
+      'SELECT * FROM users WHERE (username = ? OR email = ?) AND is_active = true',
       [username, username]
     );
 

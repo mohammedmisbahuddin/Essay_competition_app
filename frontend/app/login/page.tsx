@@ -24,13 +24,14 @@ export default function LoginPage() {
     formState: { errors },
   } = useForm<LoginForm>();
 
-  const onSubmit = async (data: LoginForm) => {
+  const onSubmit = async (data: LoginForm, e?: React.FormEvent) => {
+    e?.preventDefault(); // Prevent default form submission
     setIsLoading(true);
     try {
       await login(data);
       toast.success('Login successful!');
-      // Force a page reload to ensure navigation works
-      window.location.href = '/';
+      // Use router.push instead of window.location.href to prevent URL issues
+      router.push('/');
     } catch (error: any) {
       toast.error(error.message || 'Login failed');
     } finally {

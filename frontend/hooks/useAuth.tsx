@@ -34,28 +34,46 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-  const initAuth = async () => {
-    const token = localStorage.getItem('token');
-    const savedUser = localStorage.getItem('user');
+    console.log('AuthProvider useEffect running');
+    
+    // Check if we're on the client side
+    if (typeof window === 'undefined') {
+      console.log('Server side, setting loading to false');
+      setLoading(false);
+      return;
+    }
 
-    if (token && savedUser) {
-      try {
-        // Verify token is still valid
-        const response = await authAPI.getProfile();
-        setUser(response.data.user);
-      } catch (error) {
-        // Token is invalid, clear storage
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+    console.log('Client side, initializing auth');
+    
+    // Use setTimeout to ensure this runs after hydration
+    setTimeout(() => {
+      const token = localStorage.getItem('token');
+      const savedUser = localStorage.getItem('user');
+
+      console.log('Token exists:', !!token);
+      console.log('Saved user exists:', !!savedUser);
+
+      if (token && savedUser) {
+        try {
+          // Parse the saved user data
+          const userData = JSON.parse(savedUser);
+          setUser(userData);
+          console.log('User loaded from localStorage:', userData);
+        } catch (error) {
+          console.error('Failed to parse saved user:', error);
+          // Clear invalid data
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          setUser(null);
+        }
+      } else {
+        console.log('No token or user found');
         setUser(null);
       }
-    } else {
-      setUser(null);
-    }
-    setLoading(false);
-  };
-
-    initAuth();
+      
+      console.log('Setting loading to false');
+      setLoading(false);
+    }, 100);
   }, []);
 
   const login = async (credentials: { username: string; password: string }) => {
@@ -63,23 +81,32 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       const response = await authAPI.login(credentials);
       const { token, user: userData } = response.data;
 
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(userData));
+      // Only access localStorage on client side
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('token', token);
+        localStorage.setItem('user', JSON.stringify(userData));
+      }
       setUser(userData);
+      console.log('Login successful, user set:', userData);
     } catch (error: any) {
+      console.error('Login error:', error);
       throw new Error(error.response?.data?.error || 'Login failed');
     }
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+    }
     setUser(null);
   };
 
   const updateUser = (userData: User) => {
     setUser(userData);
-    localStorage.setItem('user', JSON.stringify(userData));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('user', JSON.stringify(userData));
+    }
   };
 
   const value: AuthContextType = {
