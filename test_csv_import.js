@@ -1,7 +1,7 @@
 const fs = require('fs');
 const csv = require('csv-parser');
-const { getQuery, runQuery } = require('./backend/src/utils/database');
-const { cleanParticipantData, generateRegistrationNumber } = require('./backend/src/utils/helpers');
+const { getQuery, runQuery } = require('./src/utils/database');
+const { cleanParticipantData, generateRegistrationNumber } = require('./src/utils/helpers');
 
 async function testCSVImport() {
   console.log('Testing CSV import functionality...');
@@ -9,7 +9,7 @@ async function testCSVImport() {
   try {
     // Read test CSV file
     const participants = [];
-    const filePath = './test_participants.csv';
+    const filePath = '../test_participants.csv';
     
     const stream = fs.createReadStream(filePath)
       .pipe(csv())
