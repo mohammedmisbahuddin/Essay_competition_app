@@ -24,7 +24,7 @@ const initializeDatabase = async () => {
     console.log('✅ Connected to PostgreSQL database');
     
     // Read and execute PostgreSQL schema
-    const schemaPath = path.join(__dirname, '../../../database/schema_postgres.sql');
+    const schemaPath = path.join(__dirname, '../../schema_postgres.sql');
     const schema = fs.readFileSync(schemaPath, 'utf8');
     
     // Execute schema
