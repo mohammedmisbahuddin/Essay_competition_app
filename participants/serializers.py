@@ -24,9 +24,10 @@ class ParticipantCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Participant
         fields = [
-            'full_name', 'email', 'phone', 'gender', 'age',
+            'registration_number', 'full_name', 'email', 'phone', 'gender', 'age',
             'qualification', 'father_name'
         ]
+        read_only_fields = ['registration_number']
     
     def validate_gender(self, value):
         if value and value not in ['male', 'female', 'other']:
