@@ -27,7 +27,7 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-777r==0)tg89qfw*#=h+c
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=lambda v: [s.strip() for s in v.split(',')])
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,essaycompetitionbackend-production-e729.up.railway.app', cast=lambda v: [s.strip() for s in v.split(',')])
 
 
 # Application definition
@@ -180,6 +180,9 @@ SIMPLE_JWT = {
 CORS_ALLOWED_ORIGINS = [
     config('FRONTEND_URL', default='http://localhost:3000'),
 ]
+
+# Allow all origins for testing (remove in production)
+CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL_ORIGINS', default=True, cast=bool)
 
 CORS_ALLOW_CREDENTIALS = True
 
