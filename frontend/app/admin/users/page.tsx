@@ -19,7 +19,9 @@ interface Participant {
   father_name: string;
   registration_timestamp: string;
   is_spot_registration: boolean;
-  registration_date: string;
+  attendance_marked: boolean;
+  attendance_marked_at: string | null;
+  created_at: string;
 }
 
 export default function ManageUsers() {
@@ -88,14 +90,14 @@ export default function ManageUsers() {
         limit: pageSize,
         search: debouncedSearchTerm
       };
-      console.log('Fetching participants with params:', params);
       const response = await participantsAPI.getAll(params);
-      console.log('API Response:', response);
-      console.log('Participants data:', response.data);
-      console.log('Participants array:', response.data.participants);
-      setParticipants(response.data.participants || []);
-      setTotalPages(response.data.pagination?.totalPages || 1);
-      setTotalCount(response.data.pagination?.total || 0);
+      setParticipants(response.data.results || []);
+      
+      // Calculate pagination from backend response
+      const totalCount = response.data.count || 0;
+      const totalPages = Math.ceil(totalCount / pageSize);
+      setTotalPages(totalPages);
+      setTotalCount(totalCount);
     } catch (error: any) {
       toast.error('Failed to load participants');
       console.error('Error fetching participants:', error);
@@ -145,7 +147,7 @@ export default function ManageUsers() {
         p.age || '',
         p.qualification || '',
         p.father_name || '',
-        new Date(p.registration_date).toLocaleDateString()
+        new Date(p.registration_timestamp).toLocaleDateString()
       ])
     ].map(row => row.join(',')).join('\n');
 
@@ -285,12 +287,14 @@ export default function ManageUsers() {
                       Type
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Attendance
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {console.log('Rendering participants:', participants)}
                   {participants.map((participant) => (
                     <tr key={participant.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
@@ -324,7 +328,7 @@ export default function ManageUsers() {
                         {participant.father_name || 'N/A'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(participant.registration_date).toLocaleDateString()}
+                        {new Date(participant.registration_timestamp).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
@@ -333,6 +337,15 @@ export default function ManageUsers() {
                             : 'bg-green-100 text-green-800'
                         }`}>
                           {participant.is_spot_registration ? 'Spot' : 'Pre-registered'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          participant.attendance_marked 
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {participant.attendance_marked ? 'Present' : 'Absent'}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
