@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Configuration Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background-color: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        .info { background-color: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        pre { background-color: #f8f9fa; padding: 10px; border-radius: 3px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Frontend API Configuration Test</h1>
+    
+    <div id="config-info" class="test-result info">
+        <h3>Configuration Information</h3>
+        <p><strong>Current API URL:</strong> <span id="api-url">Loading...</span></p>
+        <p><strong>Environment:</strong> <span id="env">Loading...</span></p>
+    </div>
+
+    <div>
+        <button onclick="testLogin()">Test Login</button>
+        <button onclick="testProfile()">Test Profile</button>
+        <button onclick="clearResults()">Clear Results</button>
+    </div>
+
+    <div id="results"></div>
+
+    <script>
+        // This simulates the exact same logic as in lib/api.ts
+        const API_BASE_URL = process?.env?.NEXT_PUBLIC_API_URL || 'https://essaycompetitionbackend-production-e729.up.railway.app/api';
+        
+        // Display configuration
+        document.getElementById('api-url').textContent = API_BASE_URL;
+        document.getElementById('env').textContent = typeof process !== 'undefined' ? 'Node.js' : 'Browser';
+        
+        function addResult(message, type = 'info') {
+            const resultsDiv = document.getElementById('results');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `test-result ${type}`;
+            resultDiv.innerHTML = message;
+            resultsDiv.appendChild(resultDiv);
+        }
+        
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+        
+        async function testLogin() {
+            addResult('<h3>Testing Login API Call</h3>', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/auth/login/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: 'admin',
+                        password: 'admin123'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    addResult(`
+                        <strong>✅ Login Test Successful!</strong><br>
+                        <strong>URL Called:</strong> ${API_BASE_URL}/auth/login/<br>
+                        <strong>Status:</strong> ${response.status}<br>
+                        <strong>Response:</strong><br>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `, 'success');
+                } else {
+                    addResult(`
+                        <strong>❌ Login Test Failed</strong><br>
+                        <strong>URL Called:</strong> ${API_BASE_URL}/auth/login/<br>
+                        <strong>Status:</strong> ${response.status}<br>
+                        <strong>Response:</strong><br>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `, 'error');
+                }
+            } catch (error) {
+                addResult(`
+                    <strong>❌ Login Test Error</strong><br>
+                    <strong>URL Attempted:</strong> ${API_BASE_URL}/auth/login/<br>
+                    <strong>Error:</strong> ${error.message}
+                `, 'error');
+            }
+        }
+        
+        async function testProfile() {
+            addResult('<h3>Testing Profile API Call</h3>', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/auth/profile/`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    addResult(`
+                        <strong>✅ Profile Test Successful!</strong><br>
+                        <strong>URL Called:</strong> ${API_BASE_URL}/auth/profile/<br>
+                        <strong>Status:</strong> ${response.status}<br>
+                        <strong>Response:</strong><br>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `, 'success');
+                } else {
+                    addResult(`
+                        <strong>❌ Profile Test Failed (Expected - No Auth Token)</strong><br>
+                        <strong>URL Called:</strong> ${API_BASE_URL}/auth/profile/<br>
+                        <strong>Status:</strong> ${response.status}<br>
+                        <strong>Response:</strong><br>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `, 'error');
+                }
+            } catch (error) {
+                addResult(`
+                    <strong>❌ Profile Test Error</strong><br>
+                    <strong>URL Attempted:</strong> ${API_BASE_URL}/auth/profile/<br>
+                    <strong>Error:</strong> ${error.message}
+                `, 'error');
+            }
+        }
+        
+        // Auto-run login test on page load
+        window.onload = function() {
+            addResult('<h3>🚀 Frontend API Configuration Test</h3><p>This test verifies that the frontend is calling the correct API URL.</p>', 'info');
+            testLogin();
+        };
+    </script>
+</body>
+</html>

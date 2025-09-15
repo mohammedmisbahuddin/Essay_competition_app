@@ -24,8 +24,7 @@ export default function LoginPage() {
     formState: { errors },
   } = useForm<LoginForm>();
 
-  const onSubmit = async (data: LoginForm, e?: React.FormEvent) => {
-    e?.preventDefault(); // Prevent default form submission
+  const onSubmit = async (data: LoginForm) => {
     setIsLoading(true);
     try {
       await login(data);

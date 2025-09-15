@@ -28,6 +28,13 @@ interface CompetitionSettings {
   handwriting_max: { value: string; description: string };
   grammar_max: { value: string; description: string };
   special_points_max: { value: string; description: string };
+  // Legacy field names for backward compatibility
+  max_introduction_marks?: { value: string; description: string };
+  max_content_marks?: { value: string; description: string };
+  max_conclusion_marks?: { value: string; description: string };
+  max_handwriting_marks?: { value: string; description: string };
+  max_grammar_marks?: { value: string; description: string };
+  max_special_points?: { value: string; description: string };
 }
 
 export default function Settings() {
@@ -143,7 +150,10 @@ export default function Settings() {
       const settingsToUpdate: any = {};
       if (settings) {
         Object.keys(settings).forEach(key => {
-          settingsToUpdate[key] = settings[key as keyof CompetitionSettings].value;
+          const setting = settings[key as keyof CompetitionSettings];
+          if (setting && typeof setting === 'object' && 'value' in setting) {
+            settingsToUpdate[key] = setting.value;
+          }
         });
       }
 
@@ -495,13 +505,12 @@ export default function Settings() {
                         type="number"
                         min="0"
                         max="50"
-                        value={settings.introduction_max?.value || settings.max_introduction_marks?.value || ''}
+                        value={settings.introduction_max?.value || ''}
                         onChange={(e) => {
                           const value = e.target.value;
                           setSettings(prev => prev ? {
                             ...prev,
-                            introduction_max: { ...prev.introduction_max, value },
-                            max_introduction_marks: { ...prev.max_introduction_marks, value }
+                            introduction_max: { ...prev.introduction_max, value }
                           } : null);
                         }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
@@ -516,13 +525,12 @@ export default function Settings() {
                         type="number"
                         min="0"
                         max="100"
-                        value={settings.content_max?.value || settings.max_content_marks?.value || ''}
+                        value={settings.content_max?.value || ''}
                         onChange={(e) => {
                           const value = e.target.value;
                           setSettings(prev => prev ? {
                             ...prev,
-                            content_max: { ...prev.content_max, value },
-                            max_content_marks: { ...prev.max_content_marks, value }
+                            content_max: { ...prev.content_max, value }
                           } : null);
                         }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
@@ -537,13 +545,12 @@ export default function Settings() {
                         type="number"
                         min="0"
                         max="50"
-                        value={settings.conclusion_max?.value || settings.max_conclusion_marks?.value || ''}
+                        value={settings.conclusion_max?.value || ''}
                         onChange={(e) => {
                           const value = e.target.value;
                           setSettings(prev => prev ? {
                             ...prev,
-                            conclusion_max: { ...prev.conclusion_max, value },
-                            max_conclusion_marks: { ...prev.max_conclusion_marks, value }
+                            conclusion_max: { ...prev.conclusion_max, value }
                           } : null);
                         }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
@@ -558,13 +565,12 @@ export default function Settings() {
                         type="number"
                         min="0"
                         max="50"
-                        value={settings.handwriting_max?.value || settings.max_handwriting_marks?.value || ''}
+                        value={settings.handwriting_max?.value || ''}
                         onChange={(e) => {
                           const value = e.target.value;
                           setSettings(prev => prev ? {
                             ...prev,
-                            handwriting_max: { ...prev.handwriting_max, value },
-                            max_handwriting_marks: { ...prev.max_handwriting_marks, value }
+                            handwriting_max: { ...prev.handwriting_max, value }
                           } : null);
                         }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
@@ -579,13 +585,12 @@ export default function Settings() {
                         type="number"
                         min="0"
                         max="50"
-                        value={settings.grammar_max?.value || settings.max_grammar_marks?.value || ''}
+                        value={settings.grammar_max?.value || ''}
                         onChange={(e) => {
                           const value = e.target.value;
                           setSettings(prev => prev ? {
                             ...prev,
-                            grammar_max: { ...prev.grammar_max, value },
-                            max_grammar_marks: { ...prev.max_grammar_marks, value }
+                            grammar_max: { ...prev.grammar_max, value }
                           } : null);
                         }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
@@ -600,13 +605,12 @@ export default function Settings() {
                         type="number"
                         min="0"
                         max="50"
-                        value={settings.special_points_max?.value || settings.max_special_points?.value || ''}
+                        value={settings.special_points_max?.value || ''}
                         onChange={(e) => {
                           const value = e.target.value;
                           setSettings(prev => prev ? {
                             ...prev,
-                            special_points_max: { ...prev.special_points_max, value },
-                            max_special_points: { ...prev.max_special_points, value }
+                            special_points_max: { ...prev.special_points_max, value }
                           } : null);
                         }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
@@ -621,12 +625,12 @@ export default function Settings() {
                   <h4 className="text-md font-medium text-blue-800 mb-2">Total Maximum Marks</h4>
                   <div className="text-2xl font-bold text-blue-900">
                     {(() => {
-                      const intro = parseInt(settings.introduction_max?.value || settings.max_introduction_marks?.value || '0');
-                      const content = parseInt(settings.content_max?.value || settings.max_content_marks?.value || '0');
-                      const conclusion = parseInt(settings.conclusion_max?.value || settings.max_conclusion_marks?.value || '0');
-                      const handwriting = parseInt(settings.handwriting_max?.value || settings.max_handwriting_marks?.value || '0');
-                      const grammar = parseInt(settings.grammar_max?.value || settings.max_grammar_marks?.value || '0');
-                      const special = parseInt(settings.special_points_max?.value || settings.max_special_points?.value || '0');
+                      const intro = parseInt(settings.introduction_max?.value || '0');
+                      const content = parseInt(settings.content_max?.value || '0');
+                      const conclusion = parseInt(settings.conclusion_max?.value || '0');
+                      const handwriting = parseInt(settings.handwriting_max?.value || '0');
+                      const grammar = parseInt(settings.grammar_max?.value || '0');
+                      const special = parseInt(settings.special_points_max?.value || '0');
                       return intro + content + conclusion + handwriting + grammar + special;
                     })()} Points
                   </div>
