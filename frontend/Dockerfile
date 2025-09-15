@@ -7,6 +7,10 @@ RUN apk add --no-cache libc6-compat curl
 # Set working directory
 WORKDIR /app
 
+# Add cache-busting layer to force rebuild
+ARG CACHE_BUST=1
+RUN echo "Cache bust: $CACHE_BUST"
+
 # Copy package files
 COPY package.json package-lock.json* ./
 
@@ -21,6 +25,9 @@ COPY . .
 # Set environment variables for build
 ENV NEXT_PUBLIC_API_URL=https://essaycompetitionbackend-production-e729.up.railway.app/api
 ENV NODE_ENV=production
+
+# Clean any existing build
+RUN rm -rf .next
 
 # Build the application using yarn
 RUN yarn build
