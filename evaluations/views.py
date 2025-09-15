@@ -1,4 +1,4 @@
-from rest_framework import status, generics, permissions
+from rest_framework import status, generics, permissions, serializers
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from django.db.models import Q, Avg, Count
@@ -42,9 +42,9 @@ class EvaluationListCreateView(generics.ListCreateAPIView):
             raise permissions.PermissionDenied('Evaluator access required')
         
         # Check if evaluation already exists for this participant and evaluator
-        participant = serializer.validated_data['participant']
+        participant_registration_number = serializer.validated_data['participant_registration_number']
         if Evaluation.objects.filter(
-            participant=participant, 
+            participant_registration_number=participant_registration_number, 
             evaluator=self.request.user
         ).exists():
             raise serializers.ValidationError(
@@ -120,7 +120,7 @@ def get_evaluation_form(request, registration_number):
     
     # Get existing evaluation if any
     existing_evaluation = Evaluation.objects.filter(
-        participant=participant,
+        participant_registration_number=registration_number,
         evaluator=request.user
     ).first()
     
@@ -157,19 +157,11 @@ def submit_evaluation(request):
     if not serializer.is_valid():
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    participant_id = serializer.validated_data['participant_id']
-    
-    try:
-        participant = Participant.objects.get(id=participant_id)
-    except Participant.DoesNotExist:
-        return Response(
-            {'error': 'Participant not found'}, 
-            status=status.HTTP_404_NOT_FOUND
-        )
+    participant_registration_number = serializer.validated_data['participant_registration_number']
     
     # Check if evaluation already exists
     existing_evaluation = Evaluation.objects.filter(
-        participant=participant,
+        participant_registration_number=participant_registration_number,
         evaluator=request.user
     ).first()
     
@@ -181,7 +173,7 @@ def submit_evaluation(request):
     
     # Create or update evaluation
     evaluation_data = {
-        'participant': participant,
+        'participant_registration_number': participant_registration_number,
         'evaluator': request.user,
         'introduction_marks': serializer.validated_data.get('introduction_marks', 0),
         'content_marks': serializer.validated_data.get('content_marks', 0),
@@ -197,7 +189,7 @@ def submit_evaluation(request):
     if existing_evaluation:
         # Update existing evaluation
         for key, value in evaluation_data.items():
-            if key not in ['participant', 'evaluator']:
+            if key not in ['participant_registration_number', 'evaluator']:
                 setattr(existing_evaluation, key, value)
         existing_evaluation.save()
         evaluation = existing_evaluation
@@ -205,12 +197,22 @@ def submit_evaluation(request):
         # Create new evaluation
         evaluation = Evaluation.objects.create(**evaluation_data)
     
-    return Response({
-        'message': 'Evaluation submitted successfully',
-        'participant': {
+    # Get participant info for response
+    try:
+        participant = Participant.objects.get(registration_number=participant_registration_number)
+        participant_info = {
             'registration_number': participant.registration_number,
             'full_name': participant.full_name
         }
+    except Participant.DoesNotExist:
+        participant_info = {
+            'registration_number': participant_registration_number,
+            'full_name': 'Unknown'
+        }
+    
+    return Response({
+        'message': 'Evaluation submitted successfully',
+        'participant': participant_info
     })
 
 

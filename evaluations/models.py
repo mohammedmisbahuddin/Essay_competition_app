@@ -8,7 +8,7 @@ class Evaluation(models.Model):
     """
     Model for essay evaluations
     """
-    participant = models.ForeignKey(Participant, on_delete=models.CASCADE, related_name='evaluations')
+    participant_registration_number = models.CharField(max_length=20, db_index=True)
     evaluator = models.ForeignKey(User, on_delete=models.CASCADE, related_name='evaluations')
     
     # Evaluation criteria
@@ -38,9 +38,17 @@ class Evaluation(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     
     def __str__(self):
-        return f"Evaluation for {self.participant.registration_number} by {self.evaluator.username}"
+        return f"Evaluation for {self.participant_registration_number} by {self.evaluator.username}"
+    
+    @property
+    def participant(self):
+        """Get the participant object using registration number"""
+        try:
+            return Participant.objects.get(registration_number=self.participant_registration_number)
+        except Participant.DoesNotExist:
+            return None
     
     class Meta:
         db_table = 'evaluations'
-        unique_together = ['participant', 'evaluator']
+        unique_together = ['participant_registration_number', 'evaluator']
         ordering = ['-created_at']

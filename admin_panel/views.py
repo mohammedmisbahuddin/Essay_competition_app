@@ -61,24 +61,37 @@ def dashboard_stats(request):
     
     # Top performers - get participants with submitted evaluations
     top_performers = []
-    participants_with_evaluations = Participant.objects.filter(
-        evaluations__is_submitted=True
-    ).distinct()
     
-    for participant in participants_with_evaluations:
-        evaluations = participant.evaluations.filter(is_submitted=True)
-        if evaluations.exists():
-            total_score = sum(
-                eval.introduction_marks + eval.content_marks + eval.conclusion_marks +
-                eval.handwriting_marks + eval.grammar_marks + eval.special_points
-                for eval in evaluations
-            )
-            average_score = total_score / evaluations.count()
+    # Get all submitted evaluations
+    submitted_evaluations = Evaluation.objects.filter(is_submitted=True)
+    
+    # Group evaluations by participant registration number
+    participant_scores = {}
+    for evaluation in submitted_evaluations:
+        reg_num = evaluation.participant_registration_number
+        if reg_num not in participant_scores:
+            participant_scores[reg_num] = []
+        
+        total_score = (
+            evaluation.introduction_marks + evaluation.content_marks + 
+            evaluation.conclusion_marks + evaluation.handwriting_marks + 
+            evaluation.grammar_marks + evaluation.special_points
+        )
+        participant_scores[reg_num].append(total_score)
+    
+    # Calculate average scores for each participant
+    for reg_num, scores in participant_scores.items():
+        try:
+            participant = Participant.objects.get(registration_number=reg_num)
+            average_score = sum(scores) / len(scores)
             top_performers.append({
                 'participant': participant,
                 'average_score': average_score,
-                'evaluation_count': evaluations.count()
+                'evaluation_count': len(scores)
             })
+        except Participant.DoesNotExist:
+            # Skip if participant doesn't exist
+            continue
     
     # Sort by average score and take top 10
     top_performers = sorted(top_performers, key=lambda x: x['average_score'], reverse=True)[:10]
@@ -189,16 +202,82 @@ def get_results(request):
     })
 
 
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
 @permission_classes([permissions.IsAuthenticated])
 @require_admin
 def get_users(request):
     """
-    Get all users
+    Get all users or create new user
     """
-    users = User.objects.all().order_by('-date_joined')
-    serializer = UserSerializer(users, many=True)
-    return Response({'users': serializer.data})
+    if request.method == 'GET':
+        users = User.objects.all().order_by('-date_joined')
+        serializer = UserSerializer(users, many=True)
+        return Response({'users': serializer.data})
+    
+    elif request.method == 'POST':
+        # Create new user
+        username = request.data.get('username')
+        password = request.data.get('password')
+        role = request.data.get('role')
+        email = request.data.get('email')
+        full_name = request.data.get('full_name')
+        
+        # Validate required fields
+        if not all([username, password, role]):
+            return Response(
+                {'error': 'Username, password, and role are required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate role
+        valid_roles = ['admin', 'registration_desk', 'invigilator', 'evaluator']
+        if role not in valid_roles:
+            return Response(
+                {'error': 'Invalid role. Must be one of: admin, registration_desk, invigilator, evaluator'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if username already exists
+        if User.objects.filter(username=username).exists():
+            return Response(
+                {'error': 'Username already exists'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if email already exists (if provided)
+        if email and User.objects.filter(email=email).exists():
+            return Response(
+                {'error': 'Email already exists'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Create user
+            user = User.objects.create_user(
+                username=username,
+                password=password,
+                role=role,
+                email=email or '',
+                full_name=full_name or username,
+                is_active=True
+            )
+            
+            # Set admin permissions if role is admin
+            if role == 'admin':
+                user.is_staff = True
+                user.is_superuser = True
+                user.save()
+            
+            return Response({
+                'message': 'User created successfully',
+                'user': UserSerializer(user).data
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to create user: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 @api_view(['POST'])
@@ -251,22 +330,52 @@ def create_user(request):
     }, status=status.HTTP_201_CREATED)
 
 
-@api_view(['GET'])
+@api_view(['GET', 'PUT'])
 @permission_classes([permissions.IsAuthenticated])
 @require_admin
 def get_settings(request):
     """
-    Get competition settings
+    Get or update competition settings
     """
-    settings = CompetitionSettings.objects.all().order_by('setting_key')
-    settings_obj = {}
-    for setting in settings:
-        settings_obj[setting.setting_key] = {
-            'value': setting.setting_value,
-            'description': setting.description
-        }
+    if request.method == 'GET':
+        settings = CompetitionSettings.objects.all().order_by('setting_key')
+        settings_obj = {}
+        for setting in settings:
+            settings_obj[setting.setting_key] = {
+                'value': setting.setting_value,
+                'description': setting.description
+            }
+        
+        return Response({'settings': settings_obj})
     
-    return Response({'settings': settings_obj})
+    elif request.method == 'PUT':
+        # Update settings
+        settings_data = request.data.get('settings', {})
+        updated_settings = {}
+        
+        for key, value in settings_data.items():
+            try:
+                setting, created = CompetitionSettings.objects.get_or_create(
+                    setting_key=key,
+                    defaults={'setting_value': str(value), 'description': f'Setting for {key}'}
+                )
+                
+                if not created:
+                    setting.setting_value = str(value)
+                    setting.save()
+                
+                updated_settings[key] = setting.setting_value
+                
+            except Exception as e:
+                return Response(
+                    {'error': f'Failed to update setting {key}: {str(e)}'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        return Response({
+            'message': 'Settings updated successfully',
+            'updated_settings': updated_settings
+        })
 
 
 @api_view(['GET'])
