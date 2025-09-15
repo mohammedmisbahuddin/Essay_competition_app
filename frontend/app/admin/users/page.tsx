@@ -99,12 +99,17 @@ export default function ManageUsers() {
       const response = await participantsAPI.getAll(params);
       console.log('Full API Response:', response);
       console.log('Response data:', response.data);
-      console.log('Participants array:', response.data.participants);
-      console.log('Pagination:', response.data.pagination);
+      console.log('Results array:', response.data.results);
+      console.log('Count:', response.data.count);
       
-      setParticipants(response.data.participants || []);
-      setTotalPages(response.data.pagination?.totalPages || 1);
-      setTotalCount(response.data.pagination?.total || 0);
+      setParticipants(response.data.results || []);
+      
+      // Calculate pagination from backend response
+      const totalCount = response.data.count || 0;
+      const totalPages = Math.ceil(totalCount / pageSize);
+      console.log('Calculated totalCount:', totalCount, 'totalPages:', totalPages);
+      setTotalPages(totalPages);
+      setTotalCount(totalCount);
     } catch (error: any) {
       toast.error('Failed to load participants');
       console.error('Error fetching participants:', error);
