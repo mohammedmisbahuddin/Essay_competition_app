@@ -18,9 +18,31 @@ const PORT = process.env.PORT || 5001;
 
 // Security middleware
 app.use(helmet());
+
+// CORS configuration - allow multiple origins for development and production
+const allowedOrigins = [
+  'http://localhost:3000', // Local development
+  'http://localhost:3001', // Alternative local port
+  process.env.FRONTEND_URL, // Railway frontend URL
+  'https://essaycompetitionfrontend-production.up.railway.app', // Railway frontend (if different)
+  'https://essaycompetitionfrontend-production-e729.up.railway.app', // Alternative Railway URL
+].filter(Boolean); // Remove any undefined values
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 // Rate limiting
