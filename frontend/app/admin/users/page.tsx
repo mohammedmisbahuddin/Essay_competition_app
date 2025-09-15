@@ -88,13 +88,18 @@ export default function ManageUsers() {
         limit: pageSize,
         search: debouncedSearchTerm
       };
+      console.log('Fetching participants with params:', params);
       const response = await participantsAPI.getAll(params);
+      console.log('API Response:', response);
+      console.log('Participants data:', response.data);
+      console.log('Participants array:', response.data.participants);
       setParticipants(response.data.participants || []);
       setTotalPages(response.data.pagination?.totalPages || 1);
       setTotalCount(response.data.pagination?.total || 0);
     } catch (error: any) {
       toast.error('Failed to load participants');
       console.error('Error fetching participants:', error);
+      console.error('Error response:', error.response?.data);
     } finally {
       setLoading(false);
     }
@@ -285,6 +290,7 @@ export default function ManageUsers() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
+                  {console.log('Rendering participants:', participants)}
                   {participants.map((participant) => (
                     <tr key={participant.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
