@@ -43,9 +43,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health/ || exit 1
 
-# Copy and make startup script executable
-COPY railway_start.sh /app/railway_start.sh
-RUN chmod +x /app/railway_start.sh
-
 # Default command
-CMD ["./railway_start.sh"]
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
