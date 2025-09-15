@@ -11,17 +11,21 @@ export default function AdminDashboard() {
   const { user, logout } = useAuth();
   const router = useRouter();
   const [stats, setStats] = useState({
-    totalParticipants: 0,
-    evaluationsCompleted: 0,
-    totalEvaluations: 0,
-    spotRegistrations: 0
+    total_participants: 0,
+    evaluations_completed: 0,
+    total_evaluations: 0,
+    spot_registrations: 0
   });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    console.log('Admin Dashboard - user:', user);
+    console.log('Admin Dashboard - user role:', user?.role);
     if (user && user.role !== 'admin') {
+      console.log('User role is not admin, redirecting to login');
       router.push('/login');
     } else if (user && user.role === 'admin') {
+      console.log('User role is admin, fetching stats');
       fetchStats();
     }
   }, [user, router]);
@@ -30,10 +34,12 @@ export default function AdminDashboard() {
     try {
       setLoading(true);
       const response = await adminAPI.getStats();
-      setStats(response.data);
+      console.log('Stats response:', response.data);
+      setStats(response.data.stats);
     } catch (error: any) {
       toast.error('Failed to load statistics');
       console.error('Error fetching stats:', error);
+      console.error('Error response:', error.response?.data);
     } finally {
       setLoading(false);
     }
@@ -106,7 +112,7 @@ export default function AdminDashboard() {
                 <div className="ml-5 w-0 flex-1">
                   <dl>
                     <dt className="text-sm font-medium text-gray-500 truncate">Total Participants</dt>
-                    <dd className="text-lg font-medium text-gray-900">{stats.totalParticipants}</dd>
+                    <dd className="text-lg font-medium text-gray-900">{stats.total_participants}</dd>
                   </dl>
                 </div>
               </div>
@@ -122,7 +128,7 @@ export default function AdminDashboard() {
                 <div className="ml-5 w-0 flex-1">
                   <dl>
                     <dt className="text-sm font-medium text-gray-500 truncate">Evaluations Completed</dt>
-                    <dd className="text-lg font-medium text-gray-900">{stats.evaluationsCompleted}</dd>
+                    <dd className="text-lg font-medium text-gray-900">{stats.evaluations_completed}</dd>
                   </dl>
                 </div>
               </div>
@@ -138,7 +144,7 @@ export default function AdminDashboard() {
                 <div className="ml-5 w-0 flex-1">
                   <dl>
                     <dt className="text-sm font-medium text-gray-500 truncate">Total Evaluations</dt>
-                    <dd className="text-lg font-medium text-gray-900">{stats.totalEvaluations}</dd>
+                    <dd className="text-lg font-medium text-gray-900">{stats.total_evaluations}</dd>
                   </dl>
                 </div>
               </div>
@@ -154,7 +160,7 @@ export default function AdminDashboard() {
                 <div className="ml-5 w-0 flex-1">
                   <dl>
                     <dt className="text-sm font-medium text-gray-500 truncate">Spot Registrations</dt>
-                    <dd className="text-lg font-medium text-gray-900">{stats.spotRegistrations}</dd>
+                    <dd className="text-lg font-medium text-gray-900">{stats.spot_registrations}</dd>
                   </dl>
                 </div>
               </div>

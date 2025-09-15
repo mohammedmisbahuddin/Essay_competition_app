@@ -3,7 +3,7 @@
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Settings as SettingsIcon, Users, Upload, Save, Plus, Edit, Trash2, Eye, EyeOff, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Settings as SettingsIcon, Users, Upload, Save, Plus, Edit, Trash2, Eye, EyeOff, AlertTriangle, Download } from 'lucide-react';
 import { adminAPI } from '@/lib/api';
 import toast from 'react-hot-toast';
 
@@ -81,8 +81,18 @@ export default function Settings() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    console.log('File input changed:', file);
     if (file) {
+      console.log('File selected:', {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        lastModified: file.lastModified
+      });
       setSelectedFile(file);
+    } else {
+      console.log('No file selected');
+      setSelectedFile(null);
     }
   };
 
@@ -91,6 +101,14 @@ export default function Settings() {
       toast.error('Please select a CSV file');
       return;
     }
+
+    // Debug: Log file details
+    console.log('Selected file:', {
+      name: selectedFile.name,
+      size: selectedFile.size,
+      type: selectedFile.type,
+      lastModified: selectedFile.lastModified
+    });
 
     try {
       const response = await adminAPI.importFromCSV(selectedFile);
@@ -101,8 +119,20 @@ export default function Settings() {
       const fileInput = document.getElementById('csv-file') as HTMLInputElement;
       if (fileInput) fileInput.value = '';
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to import CSV');
       console.error('CSV import error:', error);
+      console.error('Error response:', error.response?.data);
+      console.error('Error status:', error.response?.status);
+      
+      // More detailed error handling
+      if (error.response?.data?.error) {
+        toast.error(`CSV Import Error: ${error.response.data.error}`);
+      } else if (error.response?.status === 403) {
+        toast.error('Access denied: Admin role required');
+      } else if (error.response?.status === 400) {
+        toast.error('Bad request: Please check your CSV file format');
+      } else {
+        toast.error('Failed to import CSV. Please try again.');
+      }
     }
   };
 
@@ -342,10 +372,22 @@ export default function Settings() {
                 <div className="text-sm text-gray-500">
                   <p className="font-medium mb-2">CSV Format Requirements:</p>
                   <ul className="list-disc list-inside space-y-1">
-                    <li>Columns: Timestamp of Registration, Full Name, Age, Qualification, Gender, Father Name, Email ID, Phone</li>
+                    <li><strong>Required Columns:</strong> Column 1, Full Name :, Age :, Qualification :, Gender :, Father's Name :, Email id :, Phone :</li>
+                    <li><strong>Note:</strong> Column names must include colons (:) exactly as shown</li>
                     <li>First row should contain headers</li>
+                    <li>Gender values: male, female, or other</li>
                     <li>File should be in CSV format (.csv)</li>
                   </ul>
+                  <div className="mt-3">
+                    <a 
+                      href="/sample_participants_template.csv" 
+                      download="sample_participants_template.csv"
+                      className="inline-flex items-center text-blue-600 hover:text-blue-800 text-sm font-medium"
+                    >
+                      <Download className="h-4 w-4 mr-1" />
+                      Download Sample Template
+                    </a>
+                  </div>
                 </div>
                 <button
                   onClick={handleImportFromCSV}
