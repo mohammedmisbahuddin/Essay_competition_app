@@ -27,16 +27,28 @@ router.get('/participant/:participantId', authenticateToken, requireEvaluator, a
 router.post('/', authenticateToken, requireEvaluator, async (req, res) => {
   try {
     const {
-      participant_id,
-      introduction,
-      content,
-      conclusion,
-      handwriting,
-      grammar_spelling,
+      participant_registration_number,
+      introduction_marks,
+      content_marks,
+      conclusion_marks,
+      handwriting_marks,
+      grammar_marks,
       special_points,
       total_marks,
       comments
     } = req.body;
+
+    // Get participant ID from registration number
+    const participant = await getQuery(
+      'SELECT id FROM participants WHERE registration_number = ?',
+      [participant_registration_number]
+    );
+
+    if (!participant) {
+      return res.status(404).json({ error: 'Participant not found with this registration number' });
+    }
+
+    const participant_id = participant.id;
 
     // Check if evaluation already exists
     const existingEvaluation = await getQuery(
@@ -55,8 +67,8 @@ router.post('/', authenticateToken, requireEvaluator, async (req, res) => {
         handwriting_marks, grammar_marks, special_points, comments, is_submitted)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        participant_id, req.user.id, introduction, content, conclusion,
-        handwriting, grammar_spelling, special_points, comments || '', false
+        participant_id, req.user.id, introduction_marks, content_marks, conclusion_marks,
+        handwriting_marks, grammar_marks, special_points, comments || '', false
       ]
     );
 
@@ -77,11 +89,12 @@ router.put('/:id', authenticateToken, requireEvaluator, async (req, res) => {
   try {
     const { id } = req.params;
     const {
-      introduction,
-      content,
-      conclusion,
-      handwriting,
-      grammar_spelling,
+      participant_registration_number,
+      introduction_marks,
+      content_marks,
+      conclusion_marks,
+      handwriting_marks,
+      grammar_marks,
       special_points,
       total_marks,
       comments
@@ -108,8 +121,8 @@ router.put('/:id', authenticateToken, requireEvaluator, async (req, res) => {
        comments = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
       [
-        introduction, content, conclusion, handwriting,
-        grammar_spelling, special_points, comments || '', id
+        introduction_marks, content_marks, conclusion_marks, handwriting_marks,
+        grammar_marks, special_points, comments || '', id
       ]
     );
 
@@ -208,8 +221,8 @@ router.get('/participant/:registrationNumber', authenticateToken, requireEvaluat
 });
 
 // Submit evaluation
-router.post('/', [
-  body('participant_id').isInt().withMessage('Valid participant ID is required'),
+router.post('/submit', [
+  body('participant_registration_number').notEmpty().withMessage('Participant registration number is required'),
   body('introduction_marks').optional().isInt({ min: 0, max: 10 }).withMessage('Introduction marks must be between 0 and 10'),
   body('content_marks').optional().isInt({ min: 0, max: 20 }).withMessage('Content marks must be between 0 and 20'),
   body('conclusion_marks').optional().isInt({ min: 0, max: 10 }).withMessage('Conclusion marks must be between 0 and 10'),
@@ -225,7 +238,7 @@ router.post('/', [
     }
 
     const {
-      participant_id,
+      participant_registration_number,
       introduction_marks,
       content_marks,
       conclusion_marks,
@@ -237,13 +250,15 @@ router.post('/', [
 
     // Verify participant exists
     const participant = await getQuery(
-      'SELECT id, registration_number, full_name FROM participants WHERE id = ?',
-      [participant_id]
+      'SELECT id, registration_number, full_name FROM participants WHERE registration_number = ?',
+      [participant_registration_number]
     );
 
     if (!participant) {
       return res.status(404).json({ error: 'Participant not found' });
     }
+
+    const participant_id = participant.id;
 
     // Check if evaluation already exists
     const existingEvaluation = await getQuery(

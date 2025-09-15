@@ -81,6 +81,9 @@ export const evaluationsAPI = {
   getByParticipant: (participantId: number) =>
     api.get(`/evaluations/participant/${participantId}/`),
   
+  getByParticipantRegistrationNumber: (registrationNumber: string) =>
+    api.get(`/evaluations/participant/${registrationNumber}/`),
+  
   create: (evaluationData: any) =>
     api.post('/evaluations/', evaluationData),
   

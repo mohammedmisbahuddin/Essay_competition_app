@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Upload Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        input[type="file"] {
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>CSV Upload Test</h1>
+    
+    <div class="test-section">
+        <h3>Test 1: File Input Selection</h3>
+        <input type="file" id="csv-file" accept=".csv" />
+        <div id="file-info"></div>
+        <button onclick="testFileSelection()">Test File Selection</button>
+    </div>
+
+    <div class="test-section">
+        <h3>Test 2: FormData Creation</h3>
+        <button onclick="testFormData()" id="formdata-btn" disabled>Test FormData Creation</button>
+        <div id="formdata-info"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>Test 3: API Call Simulation</h3>
+        <button onclick="testAPICall()" id="api-btn" disabled>Test API Call</button>
+        <div id="api-info"></div>
+    </div>
+
+    <script>
+        let selectedFile = null;
+
+        document.getElementById('csv-file').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                selectedFile = file;
+                document.getElementById('file-info').innerHTML = 
+                    `<div class="success">✅ File selected: ${file.name} (${file.size} bytes, ${file.type})</div>`;
+                document.getElementById('formdata-btn').disabled = false;
+            } else {
+                selectedFile = null;
+                document.getElementById('file-info').innerHTML = 
+                    `<div class="error">❌ No file selected</div>`;
+                document.getElementById('formdata-btn').disabled = true;
+            }
+        });
+
+        function testFileSelection() {
+            if (selectedFile) {
+                document.getElementById('file-info').innerHTML += 
+                    `<div class="info">📋 File details:<br>
+                    - Name: ${selectedFile.name}<br>
+                    - Size: ${selectedFile.size} bytes<br>
+                    - Type: ${selectedFile.type}<br>
+                    - Last Modified: ${new Date(selectedFile.lastModified)}</div>`;
+            }
+        }
+
+        function testFormData() {
+            if (!selectedFile) {
+                document.getElementById('formdata-info').innerHTML = 
+                    `<div class="error">❌ No file selected</div>`;
+                return;
+            }
+
+            try {
+                const formData = new FormData();
+                formData.append('csvFile', selectedFile);
+                
+                // Check if FormData was created correctly
+                let hasFile = false;
+                for (let [key, value] of formData.entries()) {
+                    if (key === 'csvFile' && value instanceof File) {
+                        hasFile = true;
+                        break;
+                    }
+                }
+
+                if (hasFile) {
+                    document.getElementById('formdata-info').innerHTML = 
+                        `<div class="success">✅ FormData created successfully with csvFile</div>`;
+                    document.getElementById('api-btn').disabled = false;
+                } else {
+                    document.getElementById('formdata-info').innerHTML = 
+                        `<div class="error">❌ FormData creation failed - csvFile not found</div>`;
+                }
+            } catch (error) {
+                document.getElementById('formdata-info').innerHTML = 
+                    `<div class="error">❌ FormData creation error: ${error.message}</div>`;
+            }
+        }
+
+        async function testAPICall() {
+            if (!selectedFile) {
+                document.getElementById('api-info').innerHTML = 
+                    `<div class="error">❌ No file selected</div>`;
+                return;
+            }
+
+            try {
+                const formData = new FormData();
+                formData.append('csvFile', selectedFile);
+
+                // Simulate the API call structure
+                const response = await fetch('http://localhost:8000/api/admin/import/csv/', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer test-token' // This will fail but we can see the request structure
+                    },
+                    body: formData
+                });
+
+                const result = await response.text();
+                document.getElementById('api-info').innerHTML = 
+                    `<div class="info">📡 API call attempted. Response: ${result}</div>`;
+            } catch (error) {
+                document.getElementById('api-info').innerHTML = 
+                    `<div class="info">📡 API call structure test completed. Error (expected): ${error.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>
