@@ -6,6 +6,7 @@ from django.http import HttpResponse
 from django.utils import timezone
 from authentication.models import User
 from participants.models import Participant, CompetitionSettings, GoogleSheetsConfig
+from participants.utils import clean_participant_data, generate_registration_number
 from evaluations.models import Evaluation
 from participants.serializers import ParticipantSerializer
 from authentication.serializers import UserSerializer
@@ -354,3 +355,109 @@ def clear_all_data(request):
         'cleared_tables': ['participants', 'evaluations', 'non-admin users'],
         'preserved': ['admin users', 'competition settings']
     })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+@require_admin
+def import_csv(request):
+    """
+    Import participants from CSV file
+    """
+    # Check for both possible field names (csv_file or csvFile)
+    csv_file = None
+    if 'csv_file' in request.FILES:
+        csv_file = request.FILES['csv_file']
+    elif 'csvFile' in request.FILES:
+        csv_file = request.FILES['csvFile']
+    else:
+        return Response(
+            {'error': 'No CSV file uploaded. Expected field name: csv_file or csvFile'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    if not csv_file.name.endswith('.csv'):
+        return Response(
+            {'error': 'Only CSV files are allowed'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        # Read CSV file
+        file_data = csv_file.read().decode('utf-8')
+        csv_data = csv.DictReader(io.StringIO(file_data))
+        participants_data = list(csv_data)
+        
+        if not participants_data:
+            return Response(
+                {'error': 'No data found in CSV file'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Clean and validate data
+        cleaned_data = clean_participant_data(participants_data)
+        
+        if not cleaned_data:
+            return Response(
+                {'error': 'No valid participant data found after cleaning'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Process participants
+        results = {
+            'total': len(cleaned_data),
+            'created': 0,
+            'updated': 0,
+            'skipped': 0,
+            'errors': []
+        }
+        
+        for participant_data in cleaned_data:
+            try:
+                # Check if participant already exists
+                existing_participant = None
+                
+                if participant_data.get('email'):
+                    existing_participant = Participant.objects.filter(
+                        email=participant_data['email']
+                    ).first()
+                
+                if not existing_participant and participant_data.get('phone'):
+                    existing_participant = Participant.objects.filter(
+                        phone=participant_data['phone']
+                    ).first()
+                
+                if existing_participant:
+                    # Update existing participant
+                    for key, value in participant_data.items():
+                        if hasattr(existing_participant, key):
+                            setattr(existing_participant, key, value)
+                    existing_participant.save()
+                    results['updated'] += 1
+                else:
+                    # Create new participant
+                    registration_number = generate_registration_number()
+                    Participant.objects.create(
+                        registration_number=registration_number,
+                        is_spot_registration=False,
+                        **participant_data
+                    )
+                    results['created'] += 1
+                    
+            except Exception as e:
+                results['errors'].append({
+                    'participant': participant_data.get('full_name', 'Unknown'),
+                    'error': str(e)
+                })
+                results['skipped'] += 1
+        
+        return Response({
+            'message': 'CSV import completed successfully',
+            'results': results
+        })
+        
+    except Exception as e:
+        return Response(
+            {'error': f'Failed to process CSV file: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

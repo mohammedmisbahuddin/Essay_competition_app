@@ -9,5 +9,6 @@ urlpatterns = [
     path('users/create/', views.create_user, name='create_user'),
     path('settings/', views.get_settings, name='get_settings'),
     path('export/results/', views.export_results_csv, name='export_results_csv'),
+    path('import/csv/', views.import_csv, name='import_csv'),
     path('clear-all-data/', views.clear_all_data, name='clear_all_data'),
 ]

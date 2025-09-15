@@ -1,6 +1,7 @@
 import re
 from datetime import datetime
 from django.db import models
+from django.utils import timezone
 from .models import Participant
 
 
@@ -95,10 +96,24 @@ def clean_participant_data(raw_data):
         timestamp_value = row.get('Column 1') or row.get('timestamp_of_registration')
         if timestamp_value:
             try:
-                parsed_date = datetime.fromisoformat(timestamp_value.replace('Z', '+00:00'))
-                participant['registration_timestamp'] = parsed_date
+                # Handle different timestamp formats
+                timestamp_str = str(timestamp_value).strip()
+                if timestamp_str:
+                    # Try parsing as M/D/YYYY H:MM:SS format first
+                    try:
+                        parsed_date = datetime.strptime(timestamp_str, '%m/%d/%Y %H:%M:%S')
+                        participant['registration_timestamp'] = parsed_date
+                    except ValueError:
+                        # Try ISO format as fallback
+                        try:
+                            parsed_date = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                            participant['registration_timestamp'] = parsed_date
+                        except ValueError:
+                            # If all parsing fails, use current time
+                            participant['registration_timestamp'] = timezone.now()
             except (ValueError, TypeError):
-                pass
+                # If all parsing fails, use current time
+                participant['registration_timestamp'] = timezone.now()
         
         cleaned_data.append(participant)
         

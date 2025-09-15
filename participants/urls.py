@@ -7,6 +7,5 @@ urlpatterns = [
     path('search/', views.search_participants, name='search_participants'),
     path('validate/<str:registration_number>/', views.validate_registration_number, name='validate_registration'),
     path('<int:participant_id>/present/', views.mark_present, name='mark_present'),
-    path('import/csv/', views.import_csv, name='import_csv'),
     path('export/results/', views.export_results, name='export_results'),
 ]
