@@ -67,6 +67,11 @@ export default function ManageUsers() {
     fetchParticipants();
   }, [currentPage, debouncedSearchTerm]);
 
+  // Debug participants state
+  useEffect(() => {
+    console.log('Participants state updated:', participants, 'Length:', participants.length);
+  }, [participants]);
+
   // Restore focus to search input after search completes
   useEffect(() => {
     if (!isSearching && !isTyping && searchInputRef.current && searchTerm) {
@@ -90,14 +95,16 @@ export default function ManageUsers() {
         limit: pageSize,
         search: debouncedSearchTerm
       };
+      console.log('Fetching participants with params:', params);
       const response = await participantsAPI.getAll(params);
-      setParticipants(response.data.results || []);
+      console.log('Full API Response:', response);
+      console.log('Response data:', response.data);
+      console.log('Participants array:', response.data.participants);
+      console.log('Pagination:', response.data.pagination);
       
-      // Calculate pagination from backend response
-      const totalCount = response.data.count || 0;
-      const totalPages = Math.ceil(totalCount / pageSize);
-      setTotalPages(totalPages);
-      setTotalCount(totalCount);
+      setParticipants(response.data.participants || []);
+      setTotalPages(response.data.pagination?.totalPages || 1);
+      setTotalCount(response.data.pagination?.total || 0);
     } catch (error: any) {
       toast.error('Failed to load participants');
       console.error('Error fetching participants:', error);
