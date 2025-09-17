@@ -30,7 +30,6 @@ def require_admin(view_func):
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
-@require_admin
 def dashboard_stats(request):
     """
     Get dashboard statistics
