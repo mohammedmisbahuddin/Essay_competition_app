@@ -3,7 +3,7 @@
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Users, UserCheck, UserX, TrendingUp, Award, Calendar, BarChart3 } from 'lucide-react';
+import { ArrowLeft, Users, UserCheck, UserX, TrendingUp, Award, Calendar, BarChart3, RefreshCw } from 'lucide-react';
 import { adminAPI } from '@/lib/api';
 import toast from 'react-hot-toast';
 
@@ -62,6 +62,7 @@ export default function LiveStats() {
   const router = useRouter();
   const [statsData, setStatsData] = useState<LiveStatsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     if (user && user.role !== 'admin') {
@@ -71,23 +72,56 @@ export default function LiveStats() {
     }
   }, [user, router]);
 
-  const fetchLiveStats = async () => {
+  // Auto-refresh every 30 seconds
+  useEffect(() => {
+    if (!user || user.role !== 'admin') return;
+
+    const interval = setInterval(() => {
+      fetchLiveStats(true); // Pass true to indicate auto-refresh
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(interval);
+  }, [user]);
+
+  const fetchLiveStats = async (isAutoRefresh: boolean = false) => {
     try {
-      setLoading(true);
+      if (isAutoRefresh) {
+        setIsRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      
       const response = await adminAPI.getStats();
       console.log('Live Stats response:', response.data);
       setStatsData(response.data);
+      
+      if (isAutoRefresh) {
+        console.log('🔄 Auto-refresh completed');
+      }
     } catch (error: any) {
-      toast.error('Failed to load live statistics');
+      if (!isAutoRefresh) {
+        toast.error('Failed to load live statistics');
+      } else {
+        console.error('Auto-refresh failed:', error);
+      }
       console.error('Error fetching live stats:', error);
     } finally {
-      setLoading(false);
+      if (isAutoRefresh) {
+        setIsRefreshing(false);
+      } else {
+        setLoading(false);
+      }
     }
   };
 
   const handleLogout = () => {
     logout();
     router.push('/login');
+  };
+
+  const handleManualRefresh = () => {
+    fetchLiveStats(false);
+    toast.success('Refreshing live statistics...');
   };
 
   if (!user || user.role !== 'admin') {
@@ -125,7 +159,8 @@ export default function LiveStats() {
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
-            <div className="flex items-center">
+            {/* Left Section - Back Button and Title */}
+            <div className="flex items-center flex-1">
               <button
                 onClick={() => router.push('/admin/dashboard')}
                 className="mr-4 p-2 text-gray-400 hover:text-gray-600"
@@ -137,13 +172,39 @@ export default function LiveStats() {
                 <p className="text-gray-600">Real-time competition analytics and insights</p>
               </div>
             </div>
-            <button
-              onClick={handleLogout}
-              className="flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Dashboard
-            </button>
+            
+            {/* Center Section - Logo */}
+            <div className="flex justify-center flex-1">
+              <img 
+                src="/logo.png" 
+                alt="Competition Logo" 
+                className="h-16 w-auto object-contain"
+              />
+            </div>
+            
+            {/* Right Section - Refresh and Back to Dashboard Buttons */}
+            <div className="flex justify-end items-center space-x-3 flex-1">
+              <button
+                onClick={handleManualRefresh}
+                disabled={isRefreshing || loading}
+                className={`flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
+                  isRefreshing || loading
+                    ? 'text-gray-400 bg-gray-100 cursor-not-allowed'
+                    : 'text-gray-700 bg-white hover:bg-gray-50'
+                }`}
+                title="Refresh Statistics"
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+                Refresh
+              </button>
+              <button
+                onClick={handleLogout}
+                className="flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Dashboard
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -410,16 +471,6 @@ export default function LiveStats() {
           </div>
         )}
 
-        {/* Refresh Button */}
-        <div className="mt-8 text-center">
-          <button
-            onClick={fetchLiveStats}
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            <TrendingUp className="w-4 h-4 mr-2" />
-            Refresh Statistics
-          </button>
-        </div>
       </main>
     </div>
   );
