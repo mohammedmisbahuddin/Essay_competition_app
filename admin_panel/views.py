@@ -64,6 +64,93 @@ def dashboard_stats(request):
         for item in attendance_by_gender
     ]
     
+    # Age-based categorization (gen_1: 17-22, gen_2: 23-70)
+    gen_1_total = Participant.objects.filter(age__gte=17, age__lte=22).count()
+    gen_2_total = Participant.objects.filter(age__gte=23, age__lte=70).count()
+    
+    # Gen_1 participants by gender
+    gen_1_by_gender = Participant.objects.filter(age__gte=17, age__lte=22).values('gender').annotate(
+        count=Count('id')
+    ).order_by('gender')
+    
+    # Gen_2 participants by gender
+    gen_2_by_gender = Participant.objects.filter(age__gte=23, age__lte=70).values('gender').annotate(
+        count=Count('id')
+    ).order_by('gender')
+    
+    # Gen_1 attendance
+    gen_1_present = Participant.objects.filter(age__gte=17, age__lte=22, attendance_marked=True).count()
+    gen_1_absent = Participant.objects.filter(age__gte=17, age__lte=22, attendance_marked=False).count()
+    
+    # Gen_2 attendance
+    gen_2_present = Participant.objects.filter(age__gte=23, age__lte=70, attendance_marked=True).count()
+    gen_2_absent = Participant.objects.filter(age__gte=23, age__lte=70, attendance_marked=False).count()
+    
+    # Gen_1 attendance by gender
+    gen_1_attendance_by_gender = Participant.objects.filter(age__gte=17, age__lte=22).values('gender').annotate(
+        total=Count('id'),
+        present=Count('id', filter=Q(attendance_marked=True)),
+        absent=Count('id', filter=Q(attendance_marked=False))
+    ).order_by('gender')
+    
+    # Gen_2 attendance by gender
+    gen_2_attendance_by_gender = Participant.objects.filter(age__gte=23, age__lte=70).values('gender').annotate(
+        total=Count('id'),
+        present=Count('id', filter=Q(attendance_marked=True)),
+        absent=Count('id', filter=Q(attendance_marked=False))
+    ).order_by('gender')
+    
+    stats['age_categories'] = {
+        'gen_1': {
+            'age_range': '17-22',
+            'total_participants': gen_1_total,
+            'present_participants': gen_1_present,
+            'absent_participants': gen_1_absent,
+            'attendance_rate': round((gen_1_present / gen_1_total * 100) if gen_1_total > 0 else 0, 2),
+            'gender_distribution': [
+                {
+                    'gender': item['gender'] or 'Not Specified',
+                    'count': item['count']
+                }
+                for item in gen_1_by_gender
+            ],
+            'attendance_by_gender': [
+                {
+                    'gender': item['gender'] or 'Not Specified',
+                    'total': item['total'],
+                    'present': item['present'],
+                    'absent': item['absent'],
+                    'attendance_rate': round((item['present'] / item['total'] * 100) if item['total'] > 0 else 0, 2)
+                }
+                for item in gen_1_attendance_by_gender
+            ]
+        },
+        'gen_2': {
+            'age_range': '23-70',
+            'total_participants': gen_2_total,
+            'present_participants': gen_2_present,
+            'absent_participants': gen_2_absent,
+            'attendance_rate': round((gen_2_present / gen_2_total * 100) if gen_2_total > 0 else 0, 2),
+            'gender_distribution': [
+                {
+                    'gender': item['gender'] or 'Not Specified',
+                    'count': item['count']
+                }
+                for item in gen_2_by_gender
+            ],
+            'attendance_by_gender': [
+                {
+                    'gender': item['gender'] or 'Not Specified',
+                    'total': item['total'],
+                    'present': item['present'],
+                    'absent': item['absent'],
+                    'attendance_rate': round((item['present'] / item['total'] * 100) if item['total'] > 0 else 0, 2)
+                }
+                for item in gen_2_attendance_by_gender
+            ]
+        }
+    }
+    
     # Spot registrations
     stats['spot_registrations'] = Participant.objects.filter(
         is_spot_registration=True
