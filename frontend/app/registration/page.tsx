@@ -207,8 +207,24 @@ export default function RegistrationPage() {
         is_spot_registration: true
       };
 
+      console.log('🔍 Spot registration data being sent:', participantData);
+      
       const response = await participantsAPI.create(participantData);
-      const newParticipant = response.data.participant;
+      console.log('🔍 Spot registration response:', response);
+      console.log('🔍 Response data:', response.data);
+      
+      // Handle different possible response structures
+      const newParticipant = response.data.participant || response.data || response.data.data;
+      
+      if (!newParticipant) {
+        console.error('🚨 No participant data in response:', response.data);
+        throw new Error('Invalid response from server - no participant data received');
+      }
+      
+      if (!newParticipant.registration_number) {
+        console.error('🚨 No registration number in participant data:', newParticipant);
+        throw new Error('Invalid response from server - no registration number received');
+      }
       
       toast.success(`Spot registration successful! Registration number: ${newParticipant.registration_number}`);
       
@@ -228,7 +244,10 @@ export default function RegistrationPage() {
       setShowSpotRegistration(false);
       
     } catch (error: any) {
-      console.error('Spot registration error:', error);
+      console.error('🚨 Spot registration error:', error);
+      console.error('🚨 Error response:', error.response);
+      console.error('🚨 Error response data:', error.response?.data);
+      console.error('🚨 Error status:', error.response?.status);
       
       // Extract detailed error information
       let errorMessage = 'Failed to register participant';
@@ -236,6 +255,7 @@ export default function RegistrationPage() {
       
       if (error.response?.data) {
         const errorData = error.response.data;
+        console.log('🔍 Error data structure:', errorData);
         
         // Handle different types of API errors
         if (errorData.error) {
@@ -244,6 +264,8 @@ export default function RegistrationPage() {
           errorMessage = errorData.message;
         } else if (errorData.detail) {
           errorMessage = errorData.detail;
+        } else if (typeof errorData === 'string') {
+          errorMessage = errorData;
         }
         
         // Handle validation errors from backend
@@ -253,6 +275,10 @@ export default function RegistrationPage() {
           errorDetails = Object.entries(errorData.field_errors)
             .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(', ') : errors}`)
             .join('; ');
+        } else if (errorData.validation_errors) {
+          errorDetails = Object.entries(errorData.validation_errors)
+            .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(', ') : errors}`)
+            .join('; ');
         }
         
         // Handle duplicate participant error
@@ -260,8 +286,19 @@ export default function RegistrationPage() {
           const existing = errorData.existing_participant;
           errorMessage = `Participant already exists! Registration Number: ${existing.registration_number}`;
         }
+        
+        // Handle specific HTTP status codes
+        if (error.response.status === 400) {
+          errorMessage = 'Invalid data provided. Please check your input.';
+        } else if (error.response.status === 409) {
+          errorMessage = 'Participant already exists with this information.';
+        } else if (error.response.status === 500) {
+          errorMessage = 'Server error. Please try again later.';
+        }
       } else if (error.message) {
         errorMessage = error.message;
+      } else if (error.code === 'NETWORK_ERROR') {
+        errorMessage = 'Network error. Please check your connection.';
       }
       
       // Set API error for display
