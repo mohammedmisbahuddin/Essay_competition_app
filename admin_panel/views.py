@@ -51,6 +51,17 @@ def dashboard_stats(request):
         is_spot_registration=True
     ).count()
     
+    # Attendance statistics
+    stats['present_participants'] = Participant.objects.filter(
+        attendance_marked=True
+    ).count()
+    stats['absent_participants'] = Participant.objects.filter(
+        attendance_marked=False
+    ).count()
+    stats['attendance_percentage'] = round(
+        (stats['present_participants'] / stats['total_participants'] * 100) if stats['total_participants'] > 0 else 0, 2
+    )
+    
     # Evaluations completed
     stats['evaluations_completed'] = Evaluation.objects.filter(
         is_submitted=True
