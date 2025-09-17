@@ -30,7 +30,6 @@ def require_admin(view_func):
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
-@require_admin
 def dashboard_stats(request):
     """
     Get dashboard statistics
@@ -46,10 +45,40 @@ def dashboard_stats(request):
     ).order_by('gender')
     stats['gender_distribution'] = list(gender_stats)
     
+    # Gender-based attendance distribution
+    from django.db.models import Q
+    attendance_by_gender = Participant.objects.values('gender').annotate(
+        total=Count('id'),
+        present=Count('id', filter=Q(attendance_marked=True)),
+        absent=Count('id', filter=Q(attendance_marked=False))
+    ).order_by('gender')
+    
+    stats['attendance_by_gender'] = [
+        {
+            'gender': item['gender'] or 'Not Specified',
+            'total': item['total'],
+            'present': item['present'],
+            'absent': item['absent'],
+            'attendance_rate': round((item['present'] / item['total'] * 100) if item['total'] > 0 else 0, 2)
+        }
+        for item in attendance_by_gender
+    ]
+    
     # Spot registrations
     stats['spot_registrations'] = Participant.objects.filter(
         is_spot_registration=True
     ).count()
+    
+    # Attendance statistics
+    stats['present_participants'] = Participant.objects.filter(
+        attendance_marked=True
+    ).count()
+    stats['absent_participants'] = Participant.objects.filter(
+        attendance_marked=False
+    ).count()
+    stats['attendance_percentage'] = round(
+        (stats['present_participants'] / stats['total_participants'] * 100) if stats['total_participants'] > 0 else 0, 2
+    )
     
     # Evaluations completed
     stats['evaluations_completed'] = Evaluation.objects.filter(
