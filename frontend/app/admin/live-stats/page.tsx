@@ -125,7 +125,8 @@ export default function LiveStats() {
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
-            <div className="flex items-center">
+            {/* Left Section - Back Button and Title */}
+            <div className="flex items-center flex-1">
               <button
                 onClick={() => router.push('/admin/dashboard')}
                 className="mr-4 p-2 text-gray-400 hover:text-gray-600"
@@ -137,13 +138,26 @@ export default function LiveStats() {
                 <p className="text-gray-600">Real-time competition analytics and insights</p>
               </div>
             </div>
-            <button
-              onClick={handleLogout}
-              className="flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Dashboard
-            </button>
+            
+            {/* Center Section - Logo */}
+            <div className="flex justify-center flex-1">
+              <img 
+                src="/logo.png" 
+                alt="Competition Logo" 
+                className="h-16 w-auto object-contain"
+              />
+            </div>
+            
+            {/* Right Section - Back to Dashboard Button */}
+            <div className="flex justify-end flex-1">
+              <button
+                onClick={handleLogout}
+                className="flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Dashboard
+              </button>
+            </div>
           </div>
         </div>
       </header>
