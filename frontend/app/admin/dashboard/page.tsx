@@ -3,8 +3,8 @@
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { LogOut, Users, FileText, BarChart3, Settings } from 'lucide-react';
-import { adminAPI } from '@/lib/api';
+import { LogOut, Users, FileText, BarChart3, Settings, UserCheck, UserX } from 'lucide-react';
+import { adminAPI, participantsAPI } from '@/lib/api';
 import toast from 'react-hot-toast';
 
 export default function AdminDashboard() {
@@ -14,7 +14,9 @@ export default function AdminDashboard() {
     total_participants: 0,
     evaluations_completed: 0,
     total_evaluations: 0,
-    spot_registrations: 0
+    spot_registrations: 0,
+    attendance_marked: 0,
+    attendance_pending: 0
   });
   const [loading, setLoading] = useState(true);
 
@@ -33,9 +35,24 @@ export default function AdminDashboard() {
   const fetchStats = async () => {
     try {
       setLoading(true);
-      const response = await adminAPI.getStats();
-      console.log('Stats response:', response.data);
-      setStats(response.data.stats);
+      
+      // Fetch admin stats
+      const statsResponse = await adminAPI.getStats();
+      console.log('Stats response:', statsResponse.data);
+      
+      // Fetch participants to calculate attendance
+      const participantsResponse = await participantsAPI.getAll({ page: 1, limit: 1000 });
+      const participants = participantsResponse.data.results || [];
+      
+      // Calculate attendance statistics
+      const attendanceMarked = participants.filter(p => p.attendance_marked).length;
+      const attendancePending = participants.length - attendanceMarked;
+      
+      setStats({
+        ...statsResponse.data.stats,
+        attendance_marked: attendanceMarked,
+        attendance_pending: attendancePending
+      });
     } catch (error: any) {
       toast.error('Failed to load statistics');
       console.error('Error fetching stats:', error);
@@ -102,7 +119,7 @@ export default function AdminDashboard() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           <div className="bg-white overflow-hidden shadow rounded-lg">
             <div className="p-5">
               <div className="flex items-center">
@@ -161,6 +178,53 @@ export default function AdminDashboard() {
                   <dl>
                     <dt className="text-sm font-medium text-gray-500 truncate">Spot Registrations</dt>
                     <dd className="text-lg font-medium text-gray-900">{stats.spot_registrations}</dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Attendance Statistics */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <UserCheck className="h-6 w-6 text-green-600" />
+                </div>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">Attendance Marked</dt>
+                    <dd className="text-lg font-medium text-gray-900">{stats.attendance_marked}</dd>
+                    <dd className="text-sm text-gray-500">
+                      {stats.total_participants > 0 
+                        ? `${Math.round((stats.attendance_marked / stats.total_participants) * 100)}% of total`
+                        : '0% of total'
+                      }
+                    </dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <UserX className="h-6 w-6 text-red-600" />
+                </div>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">Attendance Pending</dt>
+                    <dd className="text-lg font-medium text-gray-900">{stats.attendance_pending}</dd>
+                    <dd className="text-sm text-gray-500">
+                      {stats.total_participants > 0 
+                        ? `${Math.round((stats.attendance_pending / stats.total_participants) * 100)}% of total`
+                        : '0% of total'
+                      }
+                    </dd>
                   </dl>
                 </div>
               </div>

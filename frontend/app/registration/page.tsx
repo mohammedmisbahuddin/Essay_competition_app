@@ -3,7 +3,7 @@
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
-import { Search, User, Phone, Mail, Calendar, BookOpen, UserCheck, AlertCircle, Plus, CheckCircle, X } from 'lucide-react';
+import { Search, User, Phone, Mail, Calendar, BookOpen, UserCheck, AlertCircle, Plus, CheckCircle, X, Users, UserX } from 'lucide-react';
 import { participantsAPI } from '@/lib/api';
 import toast from 'react-hot-toast';
 
@@ -49,13 +49,38 @@ export default function RegistrationPage() {
     email: '',
     phone: ''
   });
+  const [attendanceStats, setAttendanceStats] = useState({
+    total_participants: 0,
+    attendance_marked: 0,
+    attendance_pending: 0
+  });
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!loading && (!user || user.role !== 'registration_desk')) {
       router.push('/login');
+    } else if (!loading && user && user.role === 'registration_desk') {
+      fetchAttendanceStats();
     }
   }, [user, loading, router]);
+
+  const fetchAttendanceStats = async () => {
+    try {
+      const response = await participantsAPI.getAll({ page: 1, limit: 1000 });
+      const participants = response.data.results || [];
+      
+      const attendanceMarked = participants.filter(p => p.attendance_marked).length;
+      const attendancePending = participants.length - attendanceMarked;
+      
+      setAttendanceStats({
+        total_participants: participants.length,
+        attendance_marked: attendanceMarked,
+        attendance_pending: attendancePending
+      });
+    } catch (error: any) {
+      console.error('Error fetching attendance stats:', error);
+    }
+  };
 
   const handleSearch = async () => {
     if (!searchTerm.trim()) {
@@ -99,8 +124,11 @@ export default function RegistrationPage() {
       await participantsAPI.markPresent(selectedParticipant.id);
       toast.success(`${selectedParticipant.full_name} marked as present!`);
       
-      // Optionally refresh participant data to show updated status
-      // You could add a visual indicator here
+      // Refresh attendance stats
+      fetchAttendanceStats();
+      
+      // Update the selected participant's status
+      setSelectedParticipant(prev => prev ? { ...prev, attendance_marked: true } : null);
       
     } catch (error: any) {
       console.error('Mark present error:', error);
@@ -131,6 +159,9 @@ export default function RegistrationPage() {
       const newParticipant = response.data.participant;
       
       toast.success(`Spot registration successful! Registration number: ${newParticipant.registration_number}`);
+      
+      // Refresh attendance stats
+      fetchAttendanceStats();
       
       // Reset form and close modal
       setSpotForm({
@@ -228,6 +259,69 @@ export default function RegistrationPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Attendance Statistics */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <Users className="h-6 w-6 text-blue-600" />
+                </div>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">Total Participants</dt>
+                    <dd className="text-lg font-medium text-gray-900">{attendanceStats.total_participants}</dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <UserCheck className="h-6 w-6 text-green-600" />
+                </div>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">Attendance Marked</dt>
+                    <dd className="text-lg font-medium text-gray-900">{attendanceStats.attendance_marked}</dd>
+                    <dd className="text-sm text-gray-500">
+                      {attendanceStats.total_participants > 0 
+                        ? `${Math.round((attendanceStats.attendance_marked / attendanceStats.total_participants) * 100)}%`
+                        : '0%'
+                      }
+                    </dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <UserX className="h-6 w-6 text-red-600" />
+                </div>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">Attendance Pending</dt>
+                    <dd className="text-lg font-medium text-gray-900">{attendanceStats.attendance_pending}</dd>
+                    <dd className="text-sm text-gray-500">
+                      {attendanceStats.total_participants > 0 
+                        ? `${Math.round((attendanceStats.attendance_pending / attendanceStats.total_participants) * 100)}%`
+                        : '0%'
+                      }
+                    </dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Search Section */}
         <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
           <div className="flex items-center space-x-4">
