@@ -125,44 +125,44 @@ def get_results(request):
     gender = request.query_params.get('gender', '')
     search = request.query_params.get('search', '')
     
-    # Build queryset - get participants with submitted evaluations
-    participants_with_evaluations = Participant.objects.filter(
-        evaluations__is_submitted=True
-    ).distinct()
+    # Get all submitted evaluations
+    submitted_evaluations = Evaluation.objects.filter(is_submitted=True)
+    
+    # Group evaluations by participant registration number
+    participant_scores = {}
+    for evaluation in submitted_evaluations:
+        reg_num = evaluation.participant_registration_number
+        if reg_num not in participant_scores:
+            participant_scores[reg_num] = []
+        
+        total_score = (
+            evaluation.introduction_marks + evaluation.content_marks + 
+            evaluation.conclusion_marks + evaluation.handwriting_marks + 
+            evaluation.grammar_marks + evaluation.special_points
+        )
+        participant_scores[reg_num].append(total_score)
     
     # Calculate marks for each participant
     results = []
-    for participant in participants_with_evaluations:
-        evaluations = participant.evaluations.filter(is_submitted=True)
-        if evaluations.exists():
-            total_marks = sum(
-                eval.introduction_marks + eval.content_marks + eval.conclusion_marks +
-                eval.handwriting_marks + eval.grammar_marks + eval.special_points
-                for eval in evaluations
-            )
-            average_marks = total_marks / evaluations.count()
+    for reg_num, scores in participant_scores.items():
+        try:
+            participant = Participant.objects.get(registration_number=reg_num)
+            average_marks = sum(scores) / len(scores)
+            min_marks = min(scores)
+            max_marks = max(scores)
+            
             results.append({
                 'participant': participant,
                 'average_marks': average_marks,
-                'evaluation_count': evaluations.count(),
-                'min_marks': total_marks,
-                'max_marks': total_marks
+                'evaluation_count': len(scores),
+                'min_marks': min_marks,
+                'max_marks': max_marks
             })
+        except Participant.DoesNotExist:
+            # Skip if participant doesn't exist
+            continue
     
-    # Sort results
-    if sortBy == 'average_marks':
-        results.sort(key=lambda x: x['average_marks'], reverse=(sort_order == 'DESC'))
-    elif sortBy == 'evaluation_count':
-        results.sort(key=lambda x: x['evaluation_count'], reverse=(sort_order == 'DESC'))
-    else:
-        results.sort(key=lambda x: x['participant'].full_name)
-    
-    # Apply pagination
-    start = (page - 1) * page_size
-    end = start + page_size
-    paginated_results = results[start:end]
-    
-    # Apply filters
+    # Apply filters before sorting
     if gender:
         results = [r for r in results if r['participant'].gender == gender]
     
@@ -171,12 +171,21 @@ def get_results(request):
                   search.lower() in r['participant'].full_name.lower() or 
                   search.lower() in r['participant'].registration_number.lower()]
     
-    # Apply sorting (already done above)
-    # Results are already sorted and paginated
+    # Sort results
+    if sort_by == 'average_marks':
+        results.sort(key=lambda x: x['average_marks'], reverse=(sort_order == 'DESC'))
+    elif sort_by == 'evaluation_count':
+        results.sort(key=lambda x: x['evaluation_count'], reverse=(sort_order == 'DESC'))
+    else:
+        results.sort(key=lambda x: x['participant'].full_name)
+    
+    # Apply pagination
+    start = (page - 1) * limit
+    end = start + limit
+    paginated_results = results[start:end]
     
     # Get total count for pagination info
     total = len(results)
-    results = paginated_results
     
     return Response({
         'results': [
@@ -191,13 +200,13 @@ def get_results(request):
                 'min_marks': float(r['min_marks']),
                 'max_marks': float(r['max_marks'])
             }
-            for r in results
+            for r in paginated_results
         ],
         'pagination': {
             'page': page,
-            'limit': page_size,
+            'limit': limit,
             'total': total,
-            'pages': (total + page_size - 1) // page_size
+            'pages': (total + limit - 1) // limit
         }
     })
 
