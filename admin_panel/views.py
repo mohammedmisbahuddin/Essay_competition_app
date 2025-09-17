@@ -310,6 +310,7 @@ def get_results(request):
                 'registration_number': r['participant'].registration_number,
                 'full_name': r['participant'].full_name,
                 'gender': r['participant'].gender,
+                'age': r['participant'].age,
                 'qualification': r['participant'].qualification,
                 'average_marks': float(r['average_marks']),
                 'evaluation_count': r['evaluation_count'],
@@ -541,7 +542,7 @@ def export_results_csv(request):
     
     writer = csv.writer(response)
     writer.writerow([
-        'Registration Number', 'Full Name', 'Gender', 'Email', 'Phone', 
+        'Registration Number', 'Full Name', 'Gender', 'Age', 'Email', 'Phone', 
         'Qualification', 'Average Marks', 'Evaluation Count'
     ])
     
@@ -551,6 +552,7 @@ def export_results_csv(request):
             participant.registration_number,
             participant.full_name,
             participant.gender or '',
+            participant.age or '',
             participant.email or '',
             participant.phone or '',
             participant.qualification or '',
