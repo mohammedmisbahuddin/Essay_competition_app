@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
 import { Search, User, Phone, Mail, Calendar, BookOpen, UserCheck, AlertCircle, Plus, CheckCircle, X, Users, UserX } from 'lucide-react';
-import { participantsAPI } from '@/lib/api';
+import { participantsAPI, adminAPI } from '@/lib/api';
 import toast from 'react-hot-toast';
 
 interface Participant {
@@ -51,8 +51,9 @@ export default function RegistrationPage() {
   });
   const [attendanceStats, setAttendanceStats] = useState({
     total_participants: 0,
-    attendance_marked: 0,
-    attendance_pending: 0
+    present_participants: 0,
+    absent_participants: 0,
+    attendance_percentage: 0
   });
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -66,16 +67,14 @@ export default function RegistrationPage() {
 
   const fetchAttendanceStats = async () => {
     try {
-      const response = await participantsAPI.getAll({ page: 1, limit: 1000 });
-      const participants = response.data.results || [];
-      
-      const attendanceMarked = participants.filter(p => p.attendance_marked).length;
-      const attendancePending = participants.length - attendanceMarked;
+      const response = await adminAPI.getStats();
+      const stats = response.data.stats;
       
       setAttendanceStats({
-        total_participants: participants.length,
-        attendance_marked: attendanceMarked,
-        attendance_pending: attendancePending
+        total_participants: stats.total_participants,
+        present_participants: stats.present_participants,
+        absent_participants: stats.absent_participants,
+        attendance_percentage: stats.attendance_percentage
       });
     } catch (error: any) {
       console.error('Error fetching attendance stats:', error);
@@ -285,13 +284,10 @@ export default function RegistrationPage() {
                 </div>
                 <div className="ml-5 w-0 flex-1">
                   <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">Attendance Marked</dt>
-                    <dd className="text-lg font-medium text-gray-900">{attendanceStats.attendance_marked}</dd>
+                    <dt className="text-sm font-medium text-gray-500 truncate">Present Participants</dt>
+                    <dd className="text-lg font-medium text-gray-900">{attendanceStats.present_participants}</dd>
                     <dd className="text-sm text-gray-500">
-                      {attendanceStats.total_participants > 0 
-                        ? `${Math.round((attendanceStats.attendance_marked / attendanceStats.total_participants) * 100)}%`
-                        : '0%'
-                      }
+                      {attendanceStats.attendance_percentage.toFixed(1)}% attendance rate
                     </dd>
                   </dl>
                 </div>
@@ -307,11 +303,11 @@ export default function RegistrationPage() {
                 </div>
                 <div className="ml-5 w-0 flex-1">
                   <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">Attendance Pending</dt>
-                    <dd className="text-lg font-medium text-gray-900">{attendanceStats.attendance_pending}</dd>
+                    <dt className="text-sm font-medium text-gray-500 truncate">Absent Participants</dt>
+                    <dd className="text-lg font-medium text-gray-900">{attendanceStats.absent_participants}</dd>
                     <dd className="text-sm text-gray-500">
                       {attendanceStats.total_participants > 0 
-                        ? `${Math.round((attendanceStats.attendance_pending / attendanceStats.total_participants) * 100)}%`
+                        ? `${Math.round((attendanceStats.absent_participants / attendanceStats.total_participants) * 100)}%`
                         : '0%'
                       }
                     </dd>

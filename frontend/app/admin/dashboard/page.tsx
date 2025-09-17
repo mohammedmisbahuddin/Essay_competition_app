@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { LogOut, Users, FileText, BarChart3, Settings, UserCheck, UserX } from 'lucide-react';
-import { adminAPI, participantsAPI } from '@/lib/api';
+import { adminAPI } from '@/lib/api';
 import toast from 'react-hot-toast';
 
 export default function AdminDashboard() {
@@ -15,8 +15,11 @@ export default function AdminDashboard() {
     evaluations_completed: 0,
     total_evaluations: 0,
     spot_registrations: 0,
-    attendance_marked: 0,
-    attendance_pending: 0
+    present_participants: 0,
+    absent_participants: 0,
+    attendance_percentage: 0,
+    gender_distribution: [],
+    attendance_by_gender: []
   });
   const [loading, setLoading] = useState(true);
 
@@ -40,19 +43,8 @@ export default function AdminDashboard() {
       const statsResponse = await adminAPI.getStats();
       console.log('Stats response:', statsResponse.data);
       
-      // Fetch participants to calculate attendance
-      const participantsResponse = await participantsAPI.getAll({ page: 1, limit: 1000 });
-      const participants = participantsResponse.data.results || [];
-      
-      // Calculate attendance statistics
-      const attendanceMarked = participants.filter(p => p.attendance_marked).length;
-      const attendancePending = participants.length - attendanceMarked;
-      
-      setStats({
-        ...statsResponse.data.stats,
-        attendance_marked: attendanceMarked,
-        attendance_pending: attendancePending
-      });
+      // Use the stats directly from the API response
+      setStats(statsResponse.data.stats);
     } catch (error: any) {
       toast.error('Failed to load statistics');
       console.error('Error fetching stats:', error);
@@ -195,13 +187,10 @@ export default function AdminDashboard() {
                 </div>
                 <div className="ml-5 w-0 flex-1">
                   <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">Attendance Marked</dt>
-                    <dd className="text-lg font-medium text-gray-900">{stats.attendance_marked}</dd>
+                    <dt className="text-sm font-medium text-gray-500 truncate">Present Participants</dt>
+                    <dd className="text-lg font-medium text-gray-900">{stats.present_participants}</dd>
                     <dd className="text-sm text-gray-500">
-                      {stats.total_participants > 0 
-                        ? `${Math.round((stats.attendance_marked / stats.total_participants) * 100)}% of total`
-                        : '0% of total'
-                      }
+                      {stats.attendance_percentage.toFixed(1)}% attendance rate
                     </dd>
                   </dl>
                 </div>
@@ -217,11 +206,11 @@ export default function AdminDashboard() {
                 </div>
                 <div className="ml-5 w-0 flex-1">
                   <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">Attendance Pending</dt>
-                    <dd className="text-lg font-medium text-gray-900">{stats.attendance_pending}</dd>
+                    <dt className="text-sm font-medium text-gray-500 truncate">Absent Participants</dt>
+                    <dd className="text-lg font-medium text-gray-900">{stats.absent_participants}</dd>
                     <dd className="text-sm text-gray-500">
                       {stats.total_participants > 0 
-                        ? `${Math.round((stats.attendance_pending / stats.total_participants) * 100)}% of total`
+                        ? `${Math.round((stats.absent_participants / stats.total_participants) * 100)}% of total`
                         : '0% of total'
                       }
                     </dd>
