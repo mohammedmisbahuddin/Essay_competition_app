@@ -55,6 +55,8 @@ export default function RegistrationPage() {
     absent_participants: 0,
     attendance_percentage: 0
   });
+  const [validationErrors, setValidationErrors] = useState<{[key: string]: string}>({});
+  const [apiError, setApiError] = useState<string>('');
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -79,6 +81,52 @@ export default function RegistrationPage() {
     } catch (error: any) {
       console.error('Error fetching attendance stats:', error);
     }
+  };
+
+  const validateSpotRegistrationForm = (): boolean => {
+    const errors: {[key: string]: string} = {};
+    
+    // Required field validations
+    if (!spotForm.full_name.trim()) {
+      errors.full_name = 'Full name is required';
+    } else if (spotForm.full_name.trim().length < 2) {
+      errors.full_name = 'Full name must be at least 2 characters';
+    }
+    
+    if (!spotForm.age.trim()) {
+      errors.age = 'Age is required';
+    } else {
+      const age = parseInt(spotForm.age);
+      if (isNaN(age) || age < 1 || age > 120) {
+        errors.age = 'Age must be a valid number between 1 and 120';
+      }
+    }
+    
+    if (!spotForm.gender.trim()) {
+      errors.gender = 'Gender is required';
+    } else if (!['male', 'female', 'other'].includes(spotForm.gender)) {
+      errors.gender = 'Please select a valid gender';
+    }
+    
+    // Optional field validations
+    if (spotForm.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(spotForm.email.trim())) {
+      errors.email = 'Please enter a valid email address';
+    }
+    
+    if (spotForm.phone.trim() && !/^[0-9+\-\s()]{10,15}$/.test(spotForm.phone.trim())) {
+      errors.phone = 'Please enter a valid phone number (10-15 digits)';
+    }
+    
+    if (spotForm.qualification.trim() && spotForm.qualification.trim().length < 2) {
+      errors.qualification = 'Qualification must be at least 2 characters if provided';
+    }
+    
+    if (spotForm.father_name.trim() && spotForm.father_name.trim().length < 2) {
+      errors.father_name = 'Father\'s name must be at least 2 characters if provided';
+    }
+    
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
   };
 
   const handleSearch = async () => {
@@ -136,8 +184,13 @@ export default function RegistrationPage() {
   };
 
   const handleSpotRegistration = async () => {
-    if (!spotForm.full_name.trim() || !spotForm.age.trim() || !spotForm.gender.trim()) {
-      toast.error('Please fill in all required fields');
+    // Clear previous errors
+    setValidationErrors({});
+    setApiError('');
+    
+    // Validate form
+    if (!validateSpotRegistrationForm()) {
+      toast.error('Please fix the validation errors before submitting');
       return;
     }
 
@@ -146,11 +199,11 @@ export default function RegistrationPage() {
       const participantData = {
         full_name: spotForm.full_name.trim(),
         age: parseInt(spotForm.age),
-        qualification: spotForm.qualification.trim(),
+        qualification: spotForm.qualification.trim() || '',
         gender: spotForm.gender.trim(),
-        father_name: spotForm.father_name.trim(),
-        email: spotForm.email.trim(),
-        phone: spotForm.phone.trim(),
+        father_name: spotForm.father_name.trim() || '',
+        email: spotForm.email.trim() || '',
+        phone: spotForm.phone.trim() || '',
         is_spot_registration: true
       };
 
@@ -174,20 +227,49 @@ export default function RegistrationPage() {
       });
       setShowSpotRegistration(false);
       
-      // Optionally, you could automatically search for the newly created participant
-      // setSearchTerm(newParticipant.registration_number);
-      // handleSearch();
-      
     } catch (error: any) {
       console.error('Spot registration error:', error);
       
-      // Handle duplicate participant error
-      if (error.response?.data?.error === 'Participant already exists' && error.response?.data?.existing_participant) {
-        const existing = error.response.data.existing_participant;
-        toast.error(`Participant already exists! Registration Number: ${existing.registration_number}`);
-      } else {
-        toast.error(error.response?.data?.error || 'Failed to register participant');
+      // Extract detailed error information
+      let errorMessage = 'Failed to register participant';
+      let errorDetails = '';
+      
+      if (error.response?.data) {
+        const errorData = error.response.data;
+        
+        // Handle different types of API errors
+        if (errorData.error) {
+          errorMessage = errorData.error;
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        } else if (errorData.detail) {
+          errorMessage = errorData.detail;
+        }
+        
+        // Handle validation errors from backend
+        if (errorData.errors) {
+          errorDetails = Object.values(errorData.errors).flat().join(', ');
+        } else if (errorData.field_errors) {
+          errorDetails = Object.entries(errorData.field_errors)
+            .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(', ') : errors}`)
+            .join('; ');
+        }
+        
+        // Handle duplicate participant error
+        if (errorData.error === 'Participant already exists' && errorData.existing_participant) {
+          const existing = errorData.existing_participant;
+          errorMessage = `Participant already exists! Registration Number: ${existing.registration_number}`;
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
       }
+      
+      // Set API error for display
+      setApiError(errorDetails ? `${errorMessage}. Details: ${errorDetails}` : errorMessage);
+      
+      // Show toast with error
+      toast.error(errorMessage);
+      
     } finally {
       setIsSubmittingSpot(false);
     }
@@ -208,6 +290,8 @@ export default function RegistrationPage() {
 
   const closeSpotRegistration = () => {
     setShowSpotRegistration(false);
+    setValidationErrors({});
+    setApiError('');
     setSpotForm({
       full_name: '',
       age: '',
@@ -595,6 +679,23 @@ export default function RegistrationPage() {
                 </button>
               </div>
               
+              {/* API Error Display */}
+              {apiError && (
+                <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-4">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <AlertCircle className="h-5 w-5 text-red-400" />
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-red-800">Registration Error</h3>
+                      <div className="mt-2 text-sm text-red-700">
+                        <p>{apiError}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -605,9 +706,14 @@ export default function RegistrationPage() {
                       type="text"
                       value={spotForm.full_name}
                       onChange={(e) => setSpotForm(prev => ({ ...prev, full_name: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
+                        validationErrors.full_name ? 'border-red-300' : 'border-gray-300'
+                      }`}
                       placeholder="Enter full name"
                     />
+                    {validationErrors.full_name && (
+                      <p className="mt-1 text-sm text-red-600">{validationErrors.full_name}</p>
+                    )}
                   </div>
 
                   <div>
@@ -616,11 +722,18 @@ export default function RegistrationPage() {
                     </label>
                     <input
                       type="number"
+                      min="1"
+                      max="120"
                       value={spotForm.age}
                       onChange={(e) => setSpotForm(prev => ({ ...prev, age: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
+                        validationErrors.age ? 'border-red-300' : 'border-gray-300'
+                      }`}
                       placeholder="Enter age"
                     />
+                    {validationErrors.age && (
+                      <p className="mt-1 text-sm text-red-600">{validationErrors.age}</p>
+                    )}
                   </div>
 
                   <div>
@@ -630,13 +743,18 @@ export default function RegistrationPage() {
                     <select
                       value={spotForm.gender}
                       onChange={(e) => setSpotForm(prev => ({ ...prev, gender: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
+                        validationErrors.gender ? 'border-red-300' : 'border-gray-300'
+                      }`}
                     >
                       <option value="">Select gender</option>
                       <option value="male">Male</option>
                       <option value="female">Female</option>
                       <option value="other">Other</option>
                     </select>
+                    {validationErrors.gender && (
+                      <p className="mt-1 text-sm text-red-600">{validationErrors.gender}</p>
+                    )}
                   </div>
 
                   <div>
@@ -647,9 +765,14 @@ export default function RegistrationPage() {
                       type="text"
                       value={spotForm.qualification}
                       onChange={(e) => setSpotForm(prev => ({ ...prev, qualification: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
+                        validationErrors.qualification ? 'border-red-300' : 'border-gray-300'
+                      }`}
                       placeholder="Enter qualification"
                     />
+                    {validationErrors.qualification && (
+                      <p className="mt-1 text-sm text-red-600">{validationErrors.qualification}</p>
+                    )}
                   </div>
 
                   <div>
@@ -660,9 +783,14 @@ export default function RegistrationPage() {
                       type="text"
                       value={spotForm.father_name}
                       onChange={(e) => setSpotForm(prev => ({ ...prev, father_name: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
+                        validationErrors.father_name ? 'border-red-300' : 'border-gray-300'
+                      }`}
                       placeholder="Enter father's name"
                     />
+                    {validationErrors.father_name && (
+                      <p className="mt-1 text-sm text-red-600">{validationErrors.father_name}</p>
+                    )}
                   </div>
 
                   <div>
@@ -673,9 +801,14 @@ export default function RegistrationPage() {
                       type="email"
                       value={spotForm.email}
                       onChange={(e) => setSpotForm(prev => ({ ...prev, email: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
+                        validationErrors.email ? 'border-red-300' : 'border-gray-300'
+                      }`}
                       placeholder="Enter email"
                     />
+                    {validationErrors.email && (
+                      <p className="mt-1 text-sm text-red-600">{validationErrors.email}</p>
+                    )}
                   </div>
 
                   <div>
@@ -686,9 +819,14 @@ export default function RegistrationPage() {
                       type="tel"
                       value={spotForm.phone}
                       onChange={(e) => setSpotForm(prev => ({ ...prev, phone: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
+                        validationErrors.phone ? 'border-red-300' : 'border-gray-300'
+                      }`}
                       placeholder="Enter phone number"
                     />
+                    {validationErrors.phone && (
+                      <p className="mt-1 text-sm text-red-600">{validationErrors.phone}</p>
+                    )}
                   </div>
                 </div>
 
