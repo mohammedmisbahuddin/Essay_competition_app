@@ -12,6 +12,7 @@ interface EvaluationResult {
   registration_number: string;
   full_name: string;
   gender: string;
+  age: number;
   institution: string;
   average_marks: number;
   evaluation_count: number;
@@ -78,14 +79,32 @@ export default function ViewResults() {
       .slice(0, limit);
   };
 
+  const getAgeCategory = (age: number): string => {
+    if (age >= 17 && age <= 22) {
+      return 'Gen 1 (17-22)';
+    } else if (age >= 23 && age <= 70) {
+      return 'Gen 2 (23-70)';
+    } else {
+      return 'Other';
+    }
+  };
+
+  const getTopParticipantsByAgeCategory = (ageCategory: string, limit: number = 3) => {
+    return filteredResults
+      .filter(result => getAgeCategory(result.age) === ageCategory)
+      .slice(0, limit);
+  };
+
   const handleExportResults = () => {
     const csvContent = [
-      ['Rank', 'Registration Number', 'Name', 'Gender', 'Institution', 'Average Marks', 'Evaluation Count', 'Min Marks', 'Max Marks', 'Comments'],
+      ['Rank', 'Registration Number', 'Name', 'Gender', 'Age', 'Age Category', 'Institution', 'Average Marks', 'Evaluation Count', 'Min Marks', 'Max Marks', 'Comments'],
       ...filteredResults.map((result, index) => [
         index + 1,
         result.registration_number,
         result.full_name,
         result.gender,
+        result.age,
+        getAgeCategory(result.age),
         result.institution || 'N/A',
         result.average_marks,
         result.evaluation_count,
@@ -124,6 +143,8 @@ export default function ViewResults() {
   const topGirls = getTopParticipants('female', 3);
   const top20Boys = getTopParticipants('male', 20);
   const top20Girls = getTopParticipants('female', 20);
+  const topGen1 = getTopParticipantsByAgeCategory('Gen 1 (17-22)', 3);
+  const topGen2 = getTopParticipantsByAgeCategory('Gen 2 (23-70)', 3);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -165,7 +186,7 @@ export default function ViewResults() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         {/* Top 3 Winners */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
           {/* Top 3 Boys */}
           <div className="bg-white shadow rounded-lg">
             <div className="px-4 py-5 sm:p-6">
@@ -223,6 +244,70 @@ export default function ViewResults() {
                 ))}
                 {topGirls.length === 0 && (
                   <div className="text-center py-4 text-gray-500">No girls evaluated yet</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Top 3 Gen 1 (17-22) */}
+          <div className="bg-white shadow rounded-lg">
+            <div className="px-4 py-5 sm:p-6">
+              <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4 flex items-center">
+                <Medal className="w-5 h-5 mr-2 text-green-600" />
+                Top 3 Gen 1 (17-22)
+              </h3>
+              <div className="space-y-3">
+                {topGen1.map((result, index) => (
+                  <div key={result.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold ${
+                        index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : 'bg-orange-600'
+                      }`}>
+                        {index + 1}
+                      </div>
+                      <div className="ml-3">
+                        <div className="text-sm font-medium text-gray-900">{result.full_name}</div>
+                        <div className="text-sm text-gray-500">{result.registration_number}</div>
+                        <div className="text-xs text-gray-400">Age: {result.age}</div>
+                      </div>
+                    </div>
+                    <div className="text-lg font-bold text-gray-900">{result.average_marks.toFixed(2)}</div>
+                  </div>
+                ))}
+                {topGen1.length === 0 && (
+                  <div className="text-center py-4 text-gray-500">No Gen 1 participants evaluated yet</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Top 3 Gen 2 (23-70) */}
+          <div className="bg-white shadow rounded-lg">
+            <div className="px-4 py-5 sm:p-6">
+              <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4 flex items-center">
+                <Award className="w-5 h-5 mr-2 text-purple-600" />
+                Top 3 Gen 2 (23-70)
+              </h3>
+              <div className="space-y-3">
+                {topGen2.map((result, index) => (
+                  <div key={result.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold ${
+                        index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : 'bg-orange-600'
+                      }`}>
+                        {index + 1}
+                      </div>
+                      <div className="ml-3">
+                        <div className="text-sm font-medium text-gray-900">{result.full_name}</div>
+                        <div className="text-sm text-gray-500">{result.registration_number}</div>
+                        <div className="text-xs text-gray-400">Age: {result.age}</div>
+                      </div>
+                    </div>
+                    <div className="text-lg font-bold text-gray-900">{result.average_marks.toFixed(2)}</div>
+                  </div>
+                ))}
+                {topGen2.length === 0 && (
+                  <div className="text-center py-4 text-gray-500">No Gen 2 participants evaluated yet</div>
                 )}
               </div>
             </div>
@@ -290,6 +375,12 @@ export default function ViewResults() {
                       Gender
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Age
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Age Category
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Average Score
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -322,6 +413,20 @@ export default function ViewResults() {
                             : 'bg-pink-100 text-pink-800'
                         }`}>
                           {result.gender}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {result.age}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          getAgeCategory(result.age) === 'Gen 1 (17-22)'
+                            ? 'bg-green-100 text-green-800'
+                            : getAgeCategory(result.age) === 'Gen 2 (23-70)'
+                            ? 'bg-purple-100 text-purple-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {getAgeCategory(result.age)}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
