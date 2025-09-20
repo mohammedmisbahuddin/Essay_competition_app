@@ -191,8 +191,8 @@ router.post('/', [
       });
     }
 
-    // Generate unique registration number
-    const registrationNumber = await generateRegistrationNumber();
+    // Generate unique registration number using new PCWT format
+    const registrationNumber = await generateRegistrationNumber(full_name, age);
 
     // Create participant
     const result = await runQuery(
