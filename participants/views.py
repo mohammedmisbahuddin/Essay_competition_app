@@ -54,8 +54,11 @@ class ParticipantListCreateView(generics.ListCreateAPIView):
         if self.request.user.role not in ['registration_desk', 'admin']:
             raise PermissionDenied('Registration desk access required')
         
-        # Generate registration number
-        registration_number = generate_registration_number()
+        # Generate registration number using new PCWT format
+        full_name = serializer.validated_data.get('full_name')
+        age = serializer.validated_data.get('age')
+        registration_number = generate_registration_number(full_name, age)
+        
         serializer.save(
             registration_number=registration_number,
             is_spot_registration=True

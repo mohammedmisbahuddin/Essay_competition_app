@@ -1,13 +1,55 @@
 import re
+import uuid
 from datetime import datetime
 from django.db import models
 from django.utils import timezone
 from .models import Participant
 
 
-def generate_registration_number():
+def extract_name_part(full_name, length):
     """
-    Generate unique registration number
+    Extract first N characters from full name, handling edge cases
+    """
+    if not full_name:
+        return "XX"  # Default for missing names
+    
+    # Clean and extract first characters (remove spaces, special chars)
+    clean_name = re.sub(r'[^A-Za-z]', '', full_name.upper())
+    
+    if len(clean_name) < length:
+        return clean_name.ljust(length, 'X')  # Pad with X
+    
+    return clean_name[:length]
+
+
+def generate_pcwt_registration_number(full_name, age):
+    """
+    Generate PCWT format registration number: PCWT + age(2) + name(2) + uuid(5)
+    Format: PCWT25JOA1B2C (13 characters total)
+    """
+    # Extract first 2 characters of name
+    name_part = extract_name_part(full_name, 2)
+    
+    # Format age as 2 digits
+    age_str = f"{age:02d}" if age else "00"
+    
+    # Generate 5-character UUID part
+    uuid_part = str(uuid.uuid4())[:5].upper()
+    
+    # Combine: PCWT + age + name + uuid
+    registration_number = f"PCWT{age_str}{name_part}{uuid_part}"
+    
+    # Ensure uniqueness (very unlikely to need retry with 5-char UUID)
+    while Participant.objects.filter(registration_number=registration_number).exists():
+        uuid_part = str(uuid.uuid4())[:5].upper()
+        registration_number = f"PCWT{age_str}{name_part}{uuid_part}"
+    
+    return registration_number
+
+
+def generate_registration_number_fallback():
+    """
+    Generate fallback registration number (original format)
     """
     prefix = 'REG'
     year = datetime.now().year % 100  # Last 2 digits of year
@@ -34,6 +76,17 @@ def generate_registration_number():
         registration_number = f"{prefix}{year:02d}{next_number:04d}"
     
     return registration_number
+
+
+def generate_registration_number(full_name=None, age=None):
+    """
+    Main function to generate registration number with fallback
+    Uses new PCWT format if name and age are provided, otherwise falls back to original format
+    """
+    if full_name and age is not None:
+        return generate_pcwt_registration_number(full_name, age)
+    else:
+        return generate_registration_number_fallback()
 
 
 def clean_participant_data(raw_data):

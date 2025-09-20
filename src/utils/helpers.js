@@ -1,7 +1,59 @@
 const { getQuery, runQuery } = require('./database');
 
-// Generate unique registration number
-const generateRegistrationNumber = async () => {
+// Extract name part for registration number
+const extractNamePart = (fullName, length) => {
+  if (!fullName) {
+    return 'XX'.padEnd(length, 'X'); // Default for missing names
+  }
+  
+  // Clean and extract first characters (remove spaces, special chars)
+  const cleanName = fullName.replace(/[^A-Za-z]/g, '').toUpperCase();
+  
+  if (cleanName.length < length) {
+    return cleanName.padEnd(length, 'X'); // Pad with X
+  }
+  
+  return cleanName.substring(0, length);
+};
+
+// Generate PCWT format registration number
+const generatePCWTRegistrationNumber = async (fullName, age) => {
+  try {
+    // Extract first 2 characters of name
+    const namePart = extractNamePart(fullName, 2);
+    
+    // Format age as 2 digits
+    const ageStr = age ? age.toString().padStart(2, '0') : '00';
+    
+    // Generate 5-character UUID part
+    const uuidPart = require('crypto').randomUUID().substring(0, 5).toUpperCase();
+    
+    // Combine: PCWT + age + name + uuid
+    let registrationNumber = `PCWT${ageStr}${namePart}${uuidPart}`;
+    
+    // Ensure uniqueness (very unlikely to need retry with 5-char UUID)
+    const exists = await getQuery(
+      'SELECT id FROM participants WHERE registration_number = ?',
+      [registrationNumber]
+    );
+
+    if (exists) {
+      // Regenerate UUID part if collision (extremely rare)
+      const newUuidPart = require('crypto').randomUUID().substring(0, 5).toUpperCase();
+      registrationNumber = `PCWT${ageStr}${namePart}${newUuidPart}`;
+    }
+
+    console.log(`Generated PCWT registration number: ${registrationNumber}`);
+    return registrationNumber;
+  } catch (error) {
+    console.error('Error generating PCWT registration number:', error);
+    // Fallback to original format
+    return await generateRegistrationNumberFallback();
+  }
+};
+
+// Generate fallback registration number (original format)
+const generateRegistrationNumberFallback = async () => {
   try {
     const prefix = 'REG';
     const year = new Date().getFullYear().toString().slice(-2);
@@ -31,16 +83,25 @@ const generateRegistrationNumber = async () => {
 
     if (exists) {
       // If somehow it exists, try next number
-      return await generateRegistrationNumber();
+      return await generateRegistrationNumberFallback();
     }
 
-    console.log(`Generated registration number: ${registrationNumber}`);
+    console.log(`Generated fallback registration number: ${registrationNumber}`);
     return registrationNumber;
   } catch (error) {
-    console.error('Error generating registration number:', error);
+    console.error('Error generating fallback registration number:', error);
     // Fallback to timestamp-based number
     const timestamp = Date.now().toString().slice(-6);
     return `REG${timestamp}`;
+  }
+};
+
+// Main function to generate registration number with fallback
+const generateRegistrationNumber = async (fullName = null, age = null) => {
+  if (fullName && age !== null) {
+    return await generatePCWTRegistrationNumber(fullName, age);
+  } else {
+    return await generateRegistrationNumberFallback();
   }
 };
 

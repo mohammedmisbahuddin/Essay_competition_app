@@ -671,8 +671,10 @@ def import_csv(request):
                     existing_participant.save()
                     results['updated'] += 1
                 else:
-                    # Create new participant
-                    registration_number = generate_registration_number()
+                    # Create new participant using new PCWT format
+                    full_name = participant_data.get('full_name')
+                    age = participant_data.get('age')
+                    registration_number = generate_registration_number(full_name, age)
                     Participant.objects.create(
                         registration_number=registration_number,
                         is_spot_registration=False,

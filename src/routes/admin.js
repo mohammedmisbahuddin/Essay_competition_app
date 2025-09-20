@@ -150,8 +150,8 @@ router.post('/import/csv', authenticateToken, requireAdmin, upload.single('csvFi
                 results.updated++;
                 console.log(`Updated existing participant: ${participant.full_name}`);
               } else {
-                // Create new participant
-                const registrationNumber = await generateRegistrationNumber();
+                // Create new participant using new PCWT format
+                const registrationNumber = await generateRegistrationNumber(participant.full_name, participant.age);
                 console.log(`Generating registration number: ${registrationNumber} for ${participant.full_name}`);
                 
                 await runQuery(`
