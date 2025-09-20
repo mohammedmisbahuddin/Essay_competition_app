@@ -361,11 +361,23 @@ export default function RegistrationPage() {
       <div className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
-            <div>
+            {/* Left Section - Title */}
+            <div className="flex-1">
               <h1 className="text-2xl font-bold text-gray-900">Registration Desk</h1>
               <p className="text-sm text-gray-600">Search participants, validate details, and handle spot registrations</p>
             </div>
-            <div className="flex items-center space-x-4">
+            
+            {/* Center Section - Logo */}
+            <div className="flex justify-center flex-1">
+              <img 
+                src="/logo.png" 
+                alt="PCWT Logo" 
+                className="h-12 w-auto object-contain"
+              />
+            </div>
+            
+            {/* Right Section - User Info */}
+            <div className="flex justify-end items-center space-x-4 flex-1">
               <span className="text-sm text-gray-600">Welcome, {user.username}</span>
               <button
                 onClick={() => router.push('/login')}
