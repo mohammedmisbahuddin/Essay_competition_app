@@ -28,6 +28,20 @@ def require_admin(view_func):
     return wrapper
 
 
+def require_admin_or_evaluator(view_func):
+    """
+    Decorator to require admin or evaluator access
+    """
+    def wrapper(request, *args, **kwargs):
+        if request.user.role not in ['admin', 'evaluator']:
+            return Response(
+                {'error': 'Admin or evaluator access required'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return view_func(request, *args, **kwargs)
+    return wrapper
+
+
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def dashboard_stats(request):
@@ -458,12 +472,20 @@ def create_user(request):
 
 @api_view(['GET', 'PUT'])
 @permission_classes([permissions.IsAuthenticated])
-@require_admin
 def get_settings(request):
     """
     Get or update competition settings
+    - GET: Available to admin and evaluator
+    - PUT: Only available to admin
     """
     if request.method == 'GET':
+        # Allow both admin and evaluator to read settings
+        if request.user.role not in ['admin', 'evaluator']:
+            return Response(
+                {'error': 'Admin or evaluator access required'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
         settings = CompetitionSettings.objects.all().order_by('setting_key')
         settings_obj = {}
         for setting in settings:
@@ -475,6 +497,13 @@ def get_settings(request):
         return Response({'settings': settings_obj})
     
     elif request.method == 'PUT':
+        # Only admin can update settings
+        if request.user.role != 'admin':
+            return Response(
+                {'error': 'Admin access required to update settings'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
         # Update settings
         settings_data = request.data.get('settings', {})
         updated_settings = {}
