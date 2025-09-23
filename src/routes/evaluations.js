@@ -207,18 +207,63 @@ router.get('/participant/:registrationNumber', authenticateToken, requireEvaluat
   }
 });
 
-// Submit evaluation
-router.post('/', [
-  body('participant_id').isInt().withMessage('Valid participant ID is required'),
-  body('introduction_marks').optional().isInt({ min: 0, max: 10 }).withMessage('Introduction marks must be between 0 and 10'),
-  body('content_marks').optional().isInt({ min: 0, max: 20 }).withMessage('Content marks must be between 0 and 20'),
-  body('conclusion_marks').optional().isInt({ min: 0, max: 10 }).withMessage('Conclusion marks must be between 0 and 10'),
-  body('handwriting_marks').optional().isInt({ min: 0, max: 10 }).withMessage('Handwriting marks must be between 0 and 10'),
-  body('grammar_marks').optional().isInt({ min: 0, max: 10 }).withMessage('Grammar marks must be between 0 and 10'),
-  body('special_points').optional().isInt({ min: 0, max: 10 }).withMessage('Special points must be between 0 and 10'),
-  body('comments').optional().isLength({ max: 1000 }).withMessage('Comments too long')
-], authenticateToken, requireEvaluator, async (req, res) => {
+// Function to get max marks from settings
+async function getMaxMarks() {
   try {
+    const settings = await getQuery('SELECT setting_key, setting_value FROM competition_settings WHERE setting_key LIKE \'max_%_marks\'');
+    const maxMarks = {};
+    
+    settings.forEach(setting => {
+      try {
+        maxMarks[setting.setting_key] = parseInt(setting.setting_value);
+      } catch (e) {
+        // Use default values if parsing fails
+        maxMarks[setting.setting_key] = 10;
+      }
+    });
+    
+    return {
+      max_introduction_marks: maxMarks.max_introduction_marks || 10,
+      max_content_marks: maxMarks.max_content_marks || 20,
+      max_conclusion_marks: maxMarks.max_conclusion_marks || 10,
+      max_handwriting_marks: maxMarks.max_handwriting_marks || 10,
+      max_grammar_marks: maxMarks.max_grammar_marks || 10,
+      max_special_points: maxMarks.max_special_points || 10
+    };
+  } catch (error) {
+    console.error('Error fetching max marks:', error);
+    // Return default values if database query fails
+    return {
+      max_introduction_marks: 10,
+      max_content_marks: 20,
+      max_conclusion_marks: 10,
+      max_handwriting_marks: 10,
+      max_grammar_marks: 10,
+      max_special_points: 10
+    };
+  }
+}
+
+// Submit evaluation
+router.post('/', authenticateToken, requireEvaluator, async (req, res) => {
+  try {
+    // Get max marks from settings
+    const maxMarks = await getMaxMarks();
+    
+    // Dynamic validation based on settings
+    const validationRules = [
+      body('participant_id').isInt().withMessage('Valid participant ID is required'),
+      body('introduction_marks').optional().isInt({ min: 0, max: maxMarks.max_introduction_marks }).withMessage(`Introduction marks must be between 0 and ${maxMarks.max_introduction_marks}`),
+      body('content_marks').optional().isInt({ min: 0, max: maxMarks.max_content_marks }).withMessage(`Content marks must be between 0 and ${maxMarks.max_content_marks}`),
+      body('conclusion_marks').optional().isInt({ min: 0, max: maxMarks.max_conclusion_marks }).withMessage(`Conclusion marks must be between 0 and ${maxMarks.max_conclusion_marks}`),
+      body('handwriting_marks').optional().isInt({ min: 0, max: maxMarks.max_handwriting_marks }).withMessage(`Handwriting marks must be between 0 and ${maxMarks.max_handwriting_marks}`),
+      body('grammar_marks').optional().isInt({ min: 0, max: maxMarks.max_grammar_marks }).withMessage(`Grammar marks must be between 0 and ${maxMarks.max_grammar_marks}`),
+      body('special_points').optional().isInt({ min: 0, max: maxMarks.max_special_points }).withMessage(`Special points must be between 0 and ${maxMarks.max_special_points}`),
+      body('comments').optional().isLength({ max: 1000 }).withMessage('Comments too long')
+    ];
+    
+    // Run validation
+    await Promise.all(validationRules.map(rule => rule.run(req)));
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
