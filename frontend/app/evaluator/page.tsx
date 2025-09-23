@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
 import { Search, User, BookOpen, Save, CheckCircle, AlertCircle, Edit3, Eye } from 'lucide-react';
-import { participantsAPI, evaluationsAPI } from '@/lib/api';
+import { participantsAPI, evaluationsAPI, adminAPI } from '@/lib/api';
 import toast from 'react-hot-toast';
 
 interface Participant {
@@ -46,6 +46,15 @@ interface Evaluation {
   updated_at?: string;
 }
 
+interface CompetitionSettings {
+  introduction_max?: { value: string };
+  content_max?: { value: string };
+  conclusion_max?: { value: string };
+  handwriting_max?: { value: string };
+  grammar_max?: { value: string };
+  special_points_max?: { value: string };
+}
+
 export default function EvaluatorPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -66,13 +75,39 @@ export default function EvaluatorPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [competitionSettings, setCompetitionSettings] = useState<CompetitionSettings | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState(true);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!loading && (!user || user.role !== 'evaluator')) {
       router.push('/login');
+    } else if (user && user.role === 'evaluator') {
+      fetchCompetitionSettings();
     }
   }, [user, loading, router]);
+
+  const fetchCompetitionSettings = async () => {
+    try {
+      setSettingsLoading(true);
+      const response = await adminAPI.getSettings();
+      setCompetitionSettings(response.data.settings || {});
+    } catch (error: any) {
+      console.error('Failed to fetch competition settings:', error);
+      toast.error('Failed to load competition settings. Using default values.');
+      // Set default values as fallback - matching backend validation limits
+      setCompetitionSettings({
+        introduction_max: { value: '10' },
+        content_max: { value: '50' },  // Backend validation: "Content marks must be between 0 and 50"
+        conclusion_max: { value: '10' },
+        handwriting_max: { value: '10' },
+        grammar_max: { value: '10' },
+        special_points_max: { value: '10' }
+      });
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
 
   const handleSearch = async () => {
     if (!searchTerm.trim()) {
@@ -168,6 +203,12 @@ export default function EvaluatorPage() {
 
   const handleMarkChange = (category: keyof EvaluationMarks, value: number) => {
     const maxMarks = getMaxMarks(category);
+    
+    // Handle NaN values
+    if (isNaN(value)) {
+      value = 0;
+    }
+    
     const clampedValue = Math.max(0, Math.min(maxMarks, value));
     
     setMarks(prev => ({
@@ -177,15 +218,48 @@ export default function EvaluatorPage() {
   };
 
   const getMaxMarks = (category: keyof EvaluationMarks): number => {
-    const maxMarks = {
+    if (!competitionSettings) {
+      // Fallback to default values if settings not loaded - matching backend validation limits
+      const defaultMarks = {
+        introduction: 10,
+        content: 50,  // Backend validation: "Content marks must be between 0 and 50"
+        conclusion: 10,
+        handwriting: 10,
+        grammar_spelling: 10,
+        special_points: 10
+      };
+      return defaultMarks[category];
+    }
+
+    // Map frontend category names to backend setting names
+    const settingMap = {
+      introduction: 'introduction_max',
+      content: 'content_max',
+      conclusion: 'conclusion_max',
+      handwriting: 'handwriting_max',
+      grammar_spelling: 'grammar_max',
+      special_points: 'special_points_max'
+    };
+
+    const settingName = settingMap[category];
+    const setting = competitionSettings[settingName as keyof CompetitionSettings];
+    const value = setting?.value;
+    
+    if (value && !isNaN(parseInt(value))) {
+      return parseInt(value);
+    }
+
+    // Fallback to default values if setting not found or invalid
+    // Note: These defaults match the backend validation limits
+    const defaultMarks = {
       introduction: 10,
-      content: 50,
+      content: 50,  // Backend validation: "Content marks must be between 0 and 50"
       conclusion: 10,
       handwriting: 10,
       grammar_spelling: 10,
       special_points: 10
     };
-    return maxMarks[category];
+    return defaultMarks[category];
   };
 
   const calculateTotal = (): number => {
@@ -343,12 +417,14 @@ export default function EvaluatorPage() {
     }
   };
 
-  if (loading) {
+  if (loading || settingsLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <p className="mt-4 text-gray-600">
+            {loading ? 'Loading...' : 'Loading competition settings...'}
+          </p>
         </div>
       </div>
     );
@@ -524,6 +600,11 @@ export default function EvaluatorPage() {
                       disabled={!isEditing && evaluation?.is_submitted}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                     />
+                    {value > getMaxMarks(category as keyof EvaluationMarks) && (
+                      <p className="text-sm text-red-600">
+                        Value exceeds maximum allowed ({getMaxMarks(category as keyof EvaluationMarks)})
+                      </p>
+                    )}
                   </div>
                 ))}
 
