@@ -1,14 +1,6 @@
 import axios from 'axios';
 
-// Use local endpoint if NEXT_PUBLIC_API_URL is null, undefined, or empty
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL && process.env.NEXT_PUBLIC_API_URL.trim() !== '' 
-  ? process.env.NEXT_PUBLIC_API_URL 
-  : 'http://localhost:8000/api';
-
-// Debug: Log the API URL being used
-console.log('🔗 API_BASE_URL:', API_BASE_URL);
-console.log('🔗 NEXT_PUBLIC_API_URL env var:', process.env.NEXT_PUBLIC_API_URL);
-console.log('🔗 Using local endpoint:', API_BASE_URL === 'http://localhost:8000/api');
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
 
 // Create axios instance
 const api = axios.create({

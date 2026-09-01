@@ -50,13 +50,25 @@ const closeDatabase = async () => {
   }
 };
 
+const normalizeQuery = (sql) => {
+  let parameterIndex = 0;
+  let normalizedSql = sql.replace(/\?/g, () => `$${++parameterIndex}`);
+
+  if (/^\s*INSERT\s+INTO\s+/i.test(normalizedSql) && !/\bRETURNING\b/i.test(normalizedSql)) {
+    normalizedSql = `${normalizedSql.trim()} RETURNING id`;
+  }
+
+  return normalizedSql;
+};
+
 // Helper function for running queries
 const runQuery = async (sql, params = []) => {
   const client = await pool.connect();
   try {
-    const result = await client.query(sql, params);
+    const result = await client.query(normalizeQuery(sql), params);
     return { 
       id: result.rows[0]?.id || result.insertId || null, 
+      lastID: result.rows[0]?.id || result.insertId || null,
       changes: result.rowCount || 0,
       rows: result.rows 
     };
@@ -69,7 +81,7 @@ const runQuery = async (sql, params = []) => {
 const getQuery = async (sql, params = []) => {
   const client = await pool.connect();
   try {
-    const result = await client.query(sql, params);
+    const result = await client.query(normalizeQuery(sql), params);
     return result.rows[0] || null;
   } finally {
     client.release();
@@ -80,7 +92,7 @@ const getQuery = async (sql, params = []) => {
 const allQuery = async (sql, params = []) => {
   const client = await pool.connect();
   try {
-    const result = await client.query(sql, params);
+    const result = await client.query(normalizeQuery(sql), params);
     return result.rows;
   } finally {
     client.release();

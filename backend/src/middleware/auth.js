@@ -14,7 +14,7 @@ const authenticateToken = async (req, res, next) => {
     
     // Get user details from database
     const user = await getQuery(
-      'SELECT id, username, email, role, full_name, is_active FROM users WHERE id = ? AND is_active = 1',
+      'SELECT id, username, email, role, full_name, is_active FROM users WHERE id = ? AND is_active = true',
       [decoded.userId]
     );
 
@@ -63,4 +63,3 @@ module.exports = {
   requireRegistrationDesk,
   requireInvigilator
 };
-

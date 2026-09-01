@@ -3,7 +3,7 @@ const { google } = require('googleapis');
 const { body, validationResult } = require('express-validator');
 const { getQuery, runQuery, allQuery } = require('../utils/database');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
-const { cleanParticipantData, generateRegistrationNumber } = require('../utils/helpers');
+const { cleanParticipantData, createWithUniqueRegistrationNumber } = require('../utils/helpers');
 
 const router = express.Router();
 
@@ -48,8 +48,14 @@ router.post('/configure', [
 
     // Save configuration
     await runQuery(
-      `INSERT OR REPLACE INTO google_sheets_config (id, sheet_url, sheet_id, range, is_active) 
-       VALUES (1, ?, ?, ?, 1)`,
+      `INSERT INTO google_sheets_config (id, sheet_url, sheet_id, range, is_active) 
+       VALUES (1, ?, ?, ?, true)
+       ON CONFLICT (id) DO UPDATE SET
+       sheet_url = EXCLUDED.sheet_url,
+       sheet_id = EXCLUDED.sheet_id,
+       range = EXCLUDED.range,
+       is_active = EXCLUDED.is_active,
+       updated_at = CURRENT_TIMESTAMP`,
       [sheet_url, sheetId, range]
     );
 
@@ -68,7 +74,7 @@ router.post('/sync', authenticateToken, requireAdmin, async (req, res) => {
   try {
     // Get Google Sheets configuration
     const config = await getQuery(
-      'SELECT * FROM google_sheets_config WHERE is_active = 1 ORDER BY id DESC LIMIT 1'
+      'SELECT * FROM google_sheets_config WHERE is_active = true ORDER BY id DESC LIMIT 1'
     );
 
     if (!config) {
@@ -101,7 +107,7 @@ router.post('/sync', authenticateToken, requireAdmin, async (req, res) => {
     }
 
     // Clean and validate data
-    const cleanedData = cleanParticipantData(rows.slice(1)); // Skip header row
+    const cleanedData = cleanParticipantData(rows.slice(1), rows[0]); // Skip header row
 
     if (cleanedData.length === 0) {
       return res.status(400).json({ error: 'No valid participant data found after cleaning' });
@@ -118,60 +124,50 @@ router.post('/sync', authenticateToken, requireAdmin, async (req, res) => {
 
     for (const participantData of cleanedData) {
       try {
-        // Check if participant already exists (by email or phone)
-        let existingParticipant = null;
-        
-        if (participantData.email) {
-          existingParticipant = await getQuery(
-            'SELECT id FROM participants WHERE email = ?',
-            [participantData.email]
-          );
-        }
-        
-        if (!existingParticipant && participantData.phone) {
-          existingParticipant = await getQuery(
-            'SELECT id FROM participants WHERE phone = ?',
-            [participantData.phone]
-          );
-        }
+        // Check if participant already exists by Full Name + Gender + Age (case-insensitive)
+        const existingParticipant = await getQuery(
+          `SELECT id FROM participants WHERE 
+           LOWER(full_name) = LOWER(?) AND LOWER(gender) = LOWER(?) AND age = ? AND 
+           full_name IS NOT NULL AND gender IS NOT NULL AND age IS NOT NULL`,
+          [participantData.full_name, participantData.gender, participantData.age]
+        );
 
         if (existingParticipant) {
           // Update existing participant
           await runQuery(
             `UPDATE participants SET 
-             full_name = ?, gender = ?, date_of_birth = ?, 
-             institution = ?, address = ?, updated_at = CURRENT_TIMESTAMP
+             email = ?, phone = ?, qualification = ?, father_name = ?,
+             registration_timestamp = ?, updated_at = CURRENT_TIMESTAMP
              WHERE id = ?`,
             [
-              participantData.full_name,
-              participantData.gender,
-              participantData.date_of_birth,
-              participantData.institution,
-              participantData.address,
+              participantData.email,
+              participantData.phone,
+              participantData.qualification,
+              participantData.father_name,
+              participantData.registration_timestamp,
               existingParticipant.id
             ]
           );
           results.updated++;
         } else {
-          // Create new participant
-          const registrationNumber = await generateRegistrationNumber();
-          
-          await runQuery(
-            `INSERT INTO participants 
-             (registration_number, full_name, email, phone, gender, 
-              date_of_birth, institution, address, is_spot_registration) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+          // Create new participant, retrying on a concurrent registration-number collision
+          await createWithUniqueRegistrationNumber((registrationNumber) => runQuery(
+            `INSERT INTO participants
+             (registration_number, full_name, email, phone, gender,
+              age, qualification, father_name, registration_timestamp, is_spot_registration)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, false)`,
             [
               registrationNumber,
               participantData.full_name,
               participantData.email,
               participantData.phone,
               participantData.gender,
-              participantData.date_of_birth,
-              participantData.institution,
-              participantData.address
+              participantData.age,
+              participantData.qualification,
+              participantData.father_name,
+              participantData.registration_timestamp
             ]
-          );
+          ));
           results.created++;
         }
       } catch (error) {
@@ -204,7 +200,7 @@ router.post('/sync', authenticateToken, requireAdmin, async (req, res) => {
 router.get('/status', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const config = await getQuery(
-      'SELECT * FROM google_sheets_config WHERE is_active = 1 ORDER BY id DESC LIMIT 1'
+      'SELECT * FROM google_sheets_config WHERE is_active = true ORDER BY id DESC LIMIT 1'
     );
 
     if (!config) {
@@ -214,7 +210,7 @@ router.get('/status', authenticateToken, requireAdmin, async (req, res) => {
     // Get participant count
     const participantCount = await getQuery('SELECT COUNT(*) as count FROM participants');
     const spotRegistrationCount = await getQuery(
-      'SELECT COUNT(*) as count FROM participants WHERE is_spot_registration = 1'
+      'SELECT COUNT(*) as count FROM participants WHERE is_spot_registration = true'
     );
 
     res.json({
@@ -291,4 +287,3 @@ router.post('/test', authenticateToken, requireAdmin, async (req, res) => {
 });
 
 module.exports = router;
-

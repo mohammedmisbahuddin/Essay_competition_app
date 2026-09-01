@@ -28,7 +28,9 @@ CREATE TABLE IF NOT EXISTS participants (
     is_spot_registration BOOLEAN DEFAULT 0,
     registration_date DATETIME DEFAULT CURRENT_TIMESTAMP,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    attendance_marked BOOLEAN DEFAULT 0,
+    attendance_marked_at DATETIME
 );
 
 -- Evaluations table for storing evaluation scores
@@ -106,4 +108,3 @@ CREATE INDEX IF NOT EXISTS idx_evaluations_participant_id ON evaluations(partici
 CREATE INDEX IF NOT EXISTS idx_evaluations_evaluator_id ON evaluations(evaluator_id);
 CREATE INDEX IF NOT EXISTS idx_evaluations_total_marks ON evaluations(total_marks);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
-

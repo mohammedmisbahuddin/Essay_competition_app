@@ -6,9 +6,11 @@ const path = require('path');
 const bcrypt = require('bcrypt');
 const { getQuery, allQuery, runQuery } = require('../utils/database');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
-const { generateStatistics, cleanParticipantData, generateRegistrationNumber } = require('../utils/helpers');
+const { generateStatistics, cleanParticipantData, createWithUniqueRegistrationNumber } = require('../utils/helpers');
 
 const router = express.Router();
+
+const UPLOADS_DIR = path.join(__dirname, '../../uploads');
 
 // Get dashboard statistics
 router.get('/dashboard', authenticateToken, requireAdmin, async (req, res) => {
@@ -21,7 +23,7 @@ router.get('/dashboard', authenticateToken, requireAdmin, async (req, res) => {
              AVG(e.total_marks) as average_marks,
              COUNT(e.id) as evaluation_count
       FROM participants p
-      LEFT JOIN evaluations e ON p.id = e.participant_id AND e.is_submitted = 1
+      LEFT JOIN evaluations e ON p.id = e.participant_id AND e.is_submitted = true
       GROUP BY p.id, p.registration_number, p.full_name, p.gender
       HAVING evaluation_count > 0
       ORDER BY average_marks DESC
@@ -33,7 +35,7 @@ router.get('/dashboard', authenticateToken, requireAdmin, async (req, res) => {
       SELECT p.registration_number, p.full_name, 
              AVG(e.total_marks) as average_marks
       FROM participants p
-      JOIN evaluations e ON p.id = e.participant_id AND e.is_submitted = 1
+      JOIN evaluations e ON p.id = e.participant_id AND e.is_submitted = true
       WHERE p.gender = 'male'
       GROUP BY p.id, p.registration_number, p.full_name
       ORDER BY average_marks DESC
@@ -44,7 +46,7 @@ router.get('/dashboard', authenticateToken, requireAdmin, async (req, res) => {
       SELECT p.registration_number, p.full_name, 
              AVG(e.total_marks) as average_marks
       FROM participants p
-      JOIN evaluations e ON p.id = e.participant_id AND e.is_submitted = 1
+      JOIN evaluations e ON p.id = e.participant_id AND e.is_submitted = true
       WHERE p.gender = 'female'
       GROUP BY p.id, p.registration_number, p.full_name
       ORDER BY average_marks DESC
@@ -83,9 +85,10 @@ router.post('/import/csv', authenticateToken, requireAdmin, async (req, res) => 
     const path = require('path');
 
     // Configure multer for file upload
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
     const storage = multer.diskStorage({
       destination: (req, file, cb) => {
-        cb(null, 'uploads/');
+        cb(null, UPLOADS_DIR);
       },
       filename: (req, file, cb) => {
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -145,7 +148,6 @@ router.post('/import/csv', authenticateToken, requireAdmin, async (req, res) => 
               }
 
               // Clean and validate data
-              const { cleanParticipantData, generateRegistrationNumber } = require('../utils/helpers');
               const cleanedData = cleanParticipantData(participants);
 
               if (cleanedData.length === 0) {
@@ -170,22 +172,18 @@ router.post('/import/csv', authenticateToken, requireAdmin, async (req, res) => 
                     results.skipped++;
                     console.log(`Skipping existing participant: ${participant.full_name} (ID: ${existing.id}, Reg: ${existing.registration_number})`);
                   } else {
-                    // Create new participant
-                    const registrationNumber = await generateRegistrationNumber();
-                    console.log(`Generating registration number: ${registrationNumber} for ${participant.full_name}`);
-                    
-                    await runQuery(`
+                    // Create new participant, retrying on a concurrent registration-number collision
+                    await createWithUniqueRegistrationNumber((registrationNumber) => runQuery(`
                       INSERT INTO participants (
                         registration_number, full_name, email, phone, gender,
                         age, qualification, father_name, registration_timestamp, is_spot_registration
-                      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, false)
                     `, [
                       registrationNumber, participant.full_name, participant.email,
                       participant.phone, participant.gender, participant.age,
                       participant.qualification, participant.father_name, participant.registration_timestamp
-                    ]);
+                    ]));
                     results.created++;
-                    console.log(`Created new participant: ${participant.full_name} (Reg: ${registrationNumber})`);
                   }
                 } catch (error) {
                   console.error('Error processing participant:', error);
@@ -252,7 +250,7 @@ router.get('/results', authenticateToken, requireAdmin, async (req, res) => {
     
     const offset = (page - 1) * limit;
 
-    let whereClause = 'WHERE e.is_submitted = 1';
+    let whereClause = 'WHERE e.is_submitted = true';
     let params = [];
 
     if (gender) {
@@ -446,7 +444,7 @@ router.get('/export/results', authenticateToken, requireAdmin, async (req, res) 
              AVG(e.total_marks) as average_marks,
              COUNT(e.id) as evaluation_count
       FROM participants p
-      LEFT JOIN evaluations e ON p.id = e.participant_id AND e.is_submitted = 1
+      LEFT JOIN evaluations e ON p.id = e.participant_id AND e.is_submitted = true
       GROUP BY p.id, p.registration_number, p.full_name, p.gender, p.email, p.phone, p.qualification
       ORDER BY average_marks DESC
     `);
@@ -641,8 +639,13 @@ router.delete('/clear-all-data', authenticateToken, requireAdmin, async (req, re
       console.log('✅ Cleared non-admin users (preserved admin accounts)');
     }
     
-    // Reset registration number sequence
-    await runQuery('DELETE FROM sqlite_sequence WHERE name IN (?, ?)', ['participants', 'evaluations']);
+    // Reset auto-increment sequences
+    if (process.env.DATABASE_URL && process.env.NODE_ENV === 'production') {
+      await runQuery('ALTER SEQUENCE IF EXISTS participants_id_seq RESTART WITH 1');
+      await runQuery('ALTER SEQUENCE IF EXISTS evaluations_id_seq RESTART WITH 1');
+    } else {
+      await runQuery('DELETE FROM sqlite_sequence WHERE name IN (?, ?)', ['participants', 'evaluations']);
+    }
     console.log('✅ Reset auto-increment sequences');
     
     console.log('🚨 CRITICAL OPERATION COMPLETED: All data cleared successfully');
@@ -664,4 +667,3 @@ router.delete('/clear-all-data', authenticateToken, requireAdmin, async (req, re
 });
 
 module.exports = router;
-

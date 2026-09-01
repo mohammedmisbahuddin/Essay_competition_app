@@ -2,7 +2,7 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { getQuery, allQuery, runQuery } = require('../utils/database');
 const { authenticateToken, requireRole, requireRegistrationDesk, requireInvigilator } = require('../middleware/auth');
-const { generateRegistrationNumber } = require('../utils/helpers');
+const { createWithUniqueRegistrationNumber } = require('../utils/helpers');
 
 const router = express.Router();
 
@@ -97,7 +97,7 @@ router.get('/search/:identifier', authenticateToken, async (req, res) => {
     
     const participant = await getQuery(
       `SELECT id, registration_number, full_name, email, phone, gender, 
-              date_of_birth, institution, address, is_spot_registration, 
+              age, qualification, father_name, registration_timestamp, is_spot_registration, 
               registration_date, created_at
        FROM participants 
        WHERE registration_number = ? OR full_name LIKE ? OR email = ? OR phone = ?`,
@@ -191,21 +191,17 @@ router.post('/', [
       });
     }
 
-    // Generate unique registration number
-    const registrationNumber = await generateRegistrationNumber();
+    // Generate unique registration number, retrying on a concurrent collision
+    const participant = await createWithUniqueRegistrationNumber(async (registrationNumber) => {
+      const result = await runQuery(
+        `INSERT INTO participants
+         (registration_number, full_name, email, phone, gender, age, qualification, father_name, is_spot_registration)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, true)`,
+        [registrationNumber, full_name, email, phone, gender, age, qualification, father_name]
+      );
 
-    // Create participant
-    const result = await runQuery(
-      `INSERT INTO participants 
-       (registration_number, full_name, email, phone, gender, age, qualification, father_name, is_spot_registration) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-      [registrationNumber, full_name, email, phone, gender, age, qualification, father_name]
-    );
-
-    const participant = await getQuery(
-      'SELECT * FROM participants WHERE id = ?',
-      [result.id]
-    );
+      return getQuery('SELECT * FROM participants WHERE id = ?', [result.id]);
+    });
 
     res.status(201).json({
       message: 'Participant registered successfully',
@@ -308,25 +304,47 @@ router.delete('/:id', authenticateToken, async (req, res) => {
 router.patch('/:id/present', authenticateToken, requireRegistrationDesk, async (req, res) => {
   try {
     const { id } = req.params;
+    const participantId = parseInt(id, 10);
+
+    if (!Number.isInteger(participantId) || participantId <= 0) {
+      return res.status(400).json({ error: 'Valid participant ID is required' });
+    }
 
     // Check if participant exists
-    const participant = await getQuery('SELECT id, full_name FROM participants WHERE id = ?', [id]);
+    const participant = await getQuery(
+      'SELECT id, full_name, registration_number, attendance_marked, attendance_marked_at FROM participants WHERE id = ?',
+      [participantId]
+    );
     if (!participant) {
       return res.status(404).json({ error: 'Participant not found' });
+    }
+
+    if (participant.attendance_marked) {
+      return res.status(409).json({
+        error: 'Attendance already marked for this participant',
+        participant: {
+          id: participant.id,
+          full_name: participant.full_name,
+          registration_number: participant.registration_number,
+          attendance_marked_at: participant.attendance_marked_at
+        }
+      });
     }
 
     // Update attendance status
     await runQuery(
       'UPDATE participants SET attendance_marked = true, attendance_marked_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [id]
+      [participantId]
+    );
+
+    const updatedParticipant = await getQuery(
+      'SELECT id, full_name, registration_number, attendance_marked, attendance_marked_at FROM participants WHERE id = ?',
+      [participantId]
     );
 
     res.json({
       message: 'Participant marked as present',
-      participant: {
-        id: participant.id,
-        full_name: participant.full_name
-      }
+      participant: updatedParticipant
     });
   } catch (error) {
     console.error('Mark present error:', error);
@@ -335,4 +353,3 @@ router.patch('/:id/present', authenticateToken, requireRegistrationDesk, async (
 });
 
 module.exports = router;
-

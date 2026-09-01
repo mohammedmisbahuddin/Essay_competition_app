@@ -1,26 +1,112 @@
-const { getQuery, runQuery } = require('./database');
+const { getQuery, allQuery } = require('./database');
+
+const MAX_REGISTRATION_ATTEMPTS = 10;
+
+const isRegistrationNumberConflict = (error) => {
+  const text = `${error?.message || ''} ${error?.detail || ''} ${error?.constraint || ''}`;
+  const isUniqueViolation = error?.code === '23505' || /UNIQUE constraint failed/i.test(text);
+  return isUniqueViolation && /registration_number/i.test(text);
+};
+
+// In-process lock serializing the generate-then-insert critical section.
+// generateRegistrationNumber() reads committed rows to pick the next number,
+// so two calls running concurrently in the same process can both pick the
+// same number before either commits. This process is the only writer in the
+// common single-instance deployment, so the lock removes that race entirely;
+// the retry loop below stays as a backstop for multi-instance/Postgres.
+let registrationLock = Promise.resolve();
+
+const withRegistrationLock = (fn) => {
+  const result = registrationLock.then(fn, fn);
+  registrationLock = result.catch(() => {});
+  return result;
+};
+
+// Generates a registration number and inserts via insertFn, retrying with a
+// fresh number on a UNIQUE(registration_number) collision. The generate-then-
+// insert gap is a TOCTOU race under concurrent requests; the DB constraint is
+// the real guard, this just makes losing the race retry instead of 500ing.
+const createWithUniqueRegistrationNumber = (insertFn) => withRegistrationLock(async () => {
+  for (let attempt = 0; attempt < MAX_REGISTRATION_ATTEMPTS; attempt++) {
+    const registrationNumber = await generateRegistrationNumber();
+    try {
+      return await insertFn(registrationNumber);
+    } catch (error) {
+      if (isRegistrationNumberConflict(error) && attempt < MAX_REGISTRATION_ATTEMPTS - 1) {
+        continue;
+      }
+      throw error;
+    }
+  }
+});
+
+const REGISTRATION_PREFIX = process.env.REGISTRATION_PREFIX || 'BCA';
+
+const normalizeHeader = (header) => {
+  return String(header || '')
+    .trim()
+    .toLowerCase()
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+};
+
+const getFieldValue = (row, fieldNames) => {
+  for (const fieldName of fieldNames) {
+    const normalizedFieldName = normalizeHeader(fieldName);
+    if (Object.prototype.hasOwnProperty.call(row, normalizedFieldName)) {
+      return row[normalizedFieldName];
+    }
+  }
+  return undefined;
+};
+
+const normalizeDataRows = (rawData, headers = null) => {
+  if (!Array.isArray(rawData)) {
+    return [];
+  }
+
+  if (headers && Array.isArray(headers)) {
+    const normalizedHeaders = headers.map(normalizeHeader);
+    return rawData.map((row) => {
+      const normalizedRow = {};
+      normalizedHeaders.forEach((header, index) => {
+        if (header) {
+          normalizedRow[header] = Array.isArray(row) ? row[index] : row?.[index];
+        }
+      });
+      return normalizedRow;
+    });
+  }
+
+  return rawData.map((row) => {
+    const normalizedRow = {};
+    Object.entries(row || {}).forEach(([key, value]) => {
+      normalizedRow[normalizeHeader(key)] = value;
+    });
+    return normalizedRow;
+  });
+};
 
 // Generate unique registration number
 const generateRegistrationNumber = async () => {
   try {
-    const prefix = 'REG';
+    const prefix = REGISTRATION_PREFIX;
     const year = new Date().getFullYear().toString().slice(-2);
     
-    // Get the last registration number for this year
-    const lastReg = await getQuery(
-      'SELECT registration_number FROM participants WHERE registration_number LIKE ? ORDER BY id DESC LIMIT 1',
+    const existingRegistrations = await allQuery(
+      'SELECT registration_number FROM participants WHERE registration_number LIKE ?',
       [`${prefix}${year}%`]
     );
 
-    let nextNumber = 1;
-    if (lastReg && lastReg.registration_number) {
-      const lastNumber = parseInt(lastReg.registration_number.slice(-4));
-      if (!isNaN(lastNumber)) {
-        nextNumber = lastNumber + 1;
-      }
-    }
+    const highestNumber = existingRegistrations.reduce((highest, row) => {
+      const match = String(row.registration_number || '').match(new RegExp(`^${prefix}${year}(\\d+)$`));
+      if (!match) return highest;
+      const currentNumber = parseInt(match[1], 10);
+      return Number.isNaN(currentNumber) ? highest : Math.max(highest, currentNumber);
+    }, 0);
 
-    // Format as REG25001, REG25002, etc.
+    const nextNumber = highestNumber + 1;
     const registrationNumber = `${prefix}${year}${nextNumber.toString().padStart(4, '0')}`;
     
     // Double-check uniqueness
@@ -40,34 +126,51 @@ const generateRegistrationNumber = async () => {
     console.error('Error generating registration number:', error);
     // Fallback to timestamp-based number
     const timestamp = Date.now().toString().slice(-6);
-    return `REG${timestamp}`;
+    return `${REGISTRATION_PREFIX}${timestamp}`;
   }
 };
 
 // Clean and validate participant data from CSV
-const cleanParticipantData = (rawData) => {
+const cleanParticipantData = (rawData, headers = null) => {
   const cleanedData = [];
   const seenEmails = new Set();
   const seenPhones = new Set();
+  const normalizedRows = normalizeDataRows(rawData, headers);
 
-  console.log('Raw data sample:', rawData.slice(0, 2)); // Debug: show first 2 rows
+  console.log('Raw data sample:', normalizedRows.slice(0, 2)); // Debug: show first 2 rows
 
-  for (const row of rawData) {
+  for (const row of normalizedRows) {
+    const fullName = getFieldValue(row, ['full_name', 'full name', 'full name :', 'name', 'participant name']);
+    const email = getFieldValue(row, ['email', 'email_id', 'email id', 'email id :', 'email address']);
+    const phone = getFieldValue(row, ['phone', 'phone :', 'mobile', 'mobile number', 'contact number', 'phone number']);
+    const gender = getFieldValue(row, ['gender', 'gender :']);
+    const age = getFieldValue(row, ['age', 'age :']);
+    const qualification = getFieldValue(row, ['qualification', 'qualification :', 'education']);
+    const fatherName = getFieldValue(row, ['father_name', 'fathername', 'fathers name', "father's name", "father's name :"]);
+    const registrationTimestamp = getFieldValue(row, [
+      'timestamp_of_registration',
+      'timestamp',
+      'registration_timestamp',
+      'column 1',
+      'submitted at',
+      'date'
+    ]);
+
     // Skip empty rows
-    if (!(row['Full Name :'] || row.full_name)) {
+    if (!fullName) {
       console.log('Skipping empty row:', row);
       continue;
     }
 
     const participant = {
-      full_name: (row['Full Name :'] || row.full_name)?.toString().trim(),
-      email: (row['Email id :'] || row.email_id)?.toString().trim().toLowerCase(),
-      phone: (row['Phone :'] || row.phone)?.toString().trim(),
-      gender: (row['Gender :'] || row.gender)?.toString().trim().toLowerCase(),
-      age: parseInt(row['Age :'] || row.age) || null,
-      qualification: (row['Qualification :'] || row.qualification)?.toString().trim(),
-      father_name: (row["Father's Name :"] || row.fathername)?.toString().trim(),
-      registration_timestamp: (row['Column 1'] || row.timestamp_of_registration)?.toString().trim()
+      full_name: fullName?.toString().trim(),
+      email: email?.toString().trim().toLowerCase(),
+      phone: phone?.toString().trim(),
+      gender: gender?.toString().trim().toLowerCase(),
+      age: parseInt(age, 10) || null,
+      qualification: qualification?.toString().trim(),
+      father_name: fatherName?.toString().trim(),
+      registration_timestamp: registrationTimestamp?.toString().trim()
     };
 
     // Validate required fields
@@ -169,9 +272,9 @@ const generateStatistics = async () => {
     stats.totalParticipants = totalParticipants.count;
 
     // Participants by gender
-    const genderStats = await getQuery(`
-      SELECT gender, COUNT(*) as count 
-      FROM participants 
+    const genderStats = await allQuery(`
+      SELECT gender, COUNT(*) as count
+      FROM participants
       GROUP BY gender
     `);
     stats.genderDistribution = genderStats;
@@ -180,7 +283,7 @@ const generateStatistics = async () => {
     const spotRegistrations = await getQuery(`
       SELECT COUNT(*) as count 
       FROM participants 
-      WHERE is_spot_registration = 1
+      WHERE is_spot_registration = true
     `);
     stats.spotRegistrations = spotRegistrations.count;
 
@@ -188,7 +291,7 @@ const generateStatistics = async () => {
     const evaluationsCompleted = await getQuery(`
       SELECT COUNT(*) as count 
       FROM evaluations 
-      WHERE is_submitted = 1
+      WHERE is_submitted = true
     `);
     stats.evaluationsCompleted = evaluationsCompleted.count;
 
@@ -204,7 +307,9 @@ const generateStatistics = async () => {
 };
 
 module.exports = {
+  REGISTRATION_PREFIX,
   generateRegistrationNumber,
+  createWithUniqueRegistrationNumber,
   cleanParticipantData,
   isValidEmail,
   isValidPhone,
@@ -213,4 +318,3 @@ module.exports = {
   formatRegistrationNumber,
   generateStatistics
 };
-

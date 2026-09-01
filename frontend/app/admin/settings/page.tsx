@@ -17,24 +17,30 @@ interface User {
   date_joined: string;
 }
 
+interface SettingValue {
+  value: string;
+  description?: string;
+}
+
 interface CompetitionSettings {
-  competition_name: { value: string; description: string };
-  competition_date: { value: string; description: string };
-  registration_deadline: { value: string; description: string };
-  max_participants: { value: string; description: string };
-  introduction_max: { value: string; description: string };
-  content_max: { value: string; description: string };
-  conclusion_max: { value: string; description: string };
-  handwriting_max: { value: string; description: string };
-  grammar_max: { value: string; description: string };
-  special_points_max: { value: string; description: string };
+  competition_name: SettingValue;
+  competition_date: SettingValue;
+  registration_deadline: SettingValue;
+  max_participants: SettingValue;
+  introduction_max: SettingValue;
+  content_max: SettingValue;
+  conclusion_max: SettingValue;
+  handwriting_max: SettingValue;
+  grammar_max: SettingValue;
+  special_points_max: SettingValue;
   // Legacy field names for backward compatibility
-  max_introduction_marks?: { value: string; description: string };
-  max_content_marks?: { value: string; description: string };
-  max_conclusion_marks?: { value: string; description: string };
-  max_handwriting_marks?: { value: string; description: string };
-  max_grammar_marks?: { value: string; description: string };
-  max_special_points?: { value: string; description: string };
+  max_introduction_marks?: SettingValue;
+  max_content_marks?: SettingValue;
+  max_conclusion_marks?: SettingValue;
+  max_handwriting_marks?: SettingValue;
+  max_grammar_marks?: SettingValue;
+  max_special_points?: SettingValue;
+  total_max_marks?: SettingValue;
 }
 
 export default function Settings() {
@@ -872,7 +878,7 @@ export default function Settings() {
                     <li>All participant records and registration data</li>
                     <li>All evaluation scores and feedback</li>
                     <li>All non-admin user accounts (invigilators, evaluators, registration desk)</li>
-                    <li>Registration number sequences (will reset to REG250001)</li>
+                    <li>Registration number sequences (will reset to BCA260001)</li>
                   </ul>
                   <p className="text-sm text-red-800 font-medium mt-2 mb-1">What will be preserved:</p>
                   <ul className="text-sm text-red-700 list-disc list-inside">

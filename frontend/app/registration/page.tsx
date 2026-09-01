@@ -19,6 +19,8 @@ interface Participant {
   father_name: string;
   registration_timestamp: string;
   is_spot_registration: boolean;
+  attendance_marked?: boolean;
+  attendance_marked_at?: string;
 }
 
 interface SpotRegistrationForm {
@@ -168,18 +170,21 @@ export default function RegistrationPage() {
     if (!selectedParticipant) return;
 
     try {
-      await participantsAPI.markPresent(selectedParticipant.id);
+      const response = await participantsAPI.markPresent(selectedParticipant.id);
       toast.success(`${selectedParticipant.full_name} marked as present!`);
-      
+
       // Refresh attendance stats
       fetchAttendanceStats();
-      
+
       // Update the selected participant's status
-      setSelectedParticipant(prev => prev ? { ...prev, attendance_marked: true } : null);
-      
+      setSelectedParticipant({
+        ...selectedParticipant,
+        ...response.data.participant
+      });
+
     } catch (error: any) {
       console.error('Mark present error:', error);
-      toast.error('Failed to mark participant as present');
+      toast.error(error.response?.data?.error || 'Failed to mark participant as present');
     }
   };
 

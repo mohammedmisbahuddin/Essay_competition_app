@@ -131,8 +131,13 @@ END;
 $$ language 'plpgsql';
 
 -- Create triggers for updated_at
+DROP TRIGGER IF EXISTS update_users_updated_at ON users;
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DROP TRIGGER IF EXISTS update_participants_updated_at ON participants;
 CREATE TRIGGER update_participants_updated_at BEFORE UPDATE ON participants FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DROP TRIGGER IF EXISTS update_evaluations_updated_at ON evaluations;
 CREATE TRIGGER update_evaluations_updated_at BEFORE UPDATE ON evaluations FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DROP TRIGGER IF EXISTS update_competition_settings_updated_at ON competition_settings;
 CREATE TRIGGER update_competition_settings_updated_at BEFORE UPDATE ON competition_settings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DROP TRIGGER IF EXISTS update_google_sheets_config_updated_at ON google_sheets_config;
 CREATE TRIGGER update_google_sheets_config_updated_at BEFORE UPDATE ON google_sheets_config FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

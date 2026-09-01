@@ -38,31 +38,28 @@ router.post('/', authenticateToken, requireEvaluator, async (req, res) => {
       comments
     } = req.body;
 
-    // Check if evaluation already exists
-    const existingEvaluation = await getQuery(
-      `SELECT id FROM evaluations 
-       WHERE participant_id = ? AND evaluator_id = ?`,
-      [participant_id, req.user.id]
-    );
-
-    if (existingEvaluation) {
-      return res.status(400).json({ error: 'Evaluation already exists for this participant' });
-    }
-
+    // Atomic insert: the UNIQUE(participant_id, evaluator_id) constraint plus
+    // ON CONFLICT DO NOTHING makes this race-safe under concurrent requests -
+    // no separate check-then-insert window for two calls to both pass the check.
     const result = await runQuery(
-      `INSERT INTO evaluations 
-       (participant_id, evaluator_id, introduction_marks, content_marks, conclusion_marks, 
+      `INSERT INTO evaluations
+       (participant_id, evaluator_id, introduction_marks, content_marks, conclusion_marks,
         handwriting_marks, grammar_marks, special_points, comments, is_submitted)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (participant_id, evaluator_id) DO NOTHING`,
       [
         participant_id, req.user.id, introduction, content, conclusion,
         handwriting, grammar_spelling, special_points, comments || '', false
       ]
     );
 
+    if (!result.changes) {
+      return res.status(400).json({ error: 'Evaluation already exists for this participant' });
+    }
+
     const evaluation = await getQuery(
-      'SELECT * FROM evaluations WHERE id = ?',
-      [result.lastID]
+      'SELECT * FROM evaluations WHERE participant_id = ? AND evaluator_id = ?',
+      [participant_id, req.user.id]
     );
 
     res.status(201).json({ evaluation });
@@ -87,31 +84,30 @@ router.put('/:id', authenticateToken, requireEvaluator, async (req, res) => {
       comments
     } = req.body;
 
-    // Check if evaluation exists and belongs to this evaluator
-    const existingEvaluation = await getQuery(
-      'SELECT * FROM evaluations WHERE id = ? AND evaluator_id = ?',
-      [id, req.user.id]
-    );
-
-    if (!existingEvaluation) {
-      return res.status(404).json({ error: 'Evaluation not found' });
-    }
-
-    if (existingEvaluation.is_submitted) {
-      return res.status(400).json({ error: 'Cannot update submitted evaluation' });
-    }
-
-    await runQuery(
-      `UPDATE evaluations SET 
+    const result = await runQuery(
+      `UPDATE evaluations SET
        introduction_marks = ?, content_marks = ?, conclusion_marks = ?, handwriting_marks = ?,
-       grammar_marks = ?, special_points = ?, 
+       grammar_marks = ?, special_points = ?,
        comments = ?, updated_at = CURRENT_TIMESTAMP
-       WHERE id = ?`,
+       WHERE id = ? AND evaluator_id = ? AND is_submitted = false`,
       [
         introduction, content, conclusion, handwriting,
-        grammar_spelling, special_points, comments || '', id
+        grammar_spelling, special_points, comments || '', id, req.user.id
       ]
     );
+
+    if (!result.changes) {
+      const existingEvaluation = await getQuery(
+        'SELECT id, is_submitted FROM evaluations WHERE id = ? AND evaluator_id = ?',
+        [id, req.user.id]
+      );
+
+      if (!existingEvaluation) {
+        return res.status(404).json({ error: 'Evaluation not found' });
+      }
+
+      return res.status(400).json({ error: 'Cannot update submitted evaluation' });
+    }
 
     const evaluation = await getQuery(
       'SELECT * FROM evaluations WHERE id = ?',
@@ -130,24 +126,27 @@ router.post('/:id/confirm', authenticateToken, requireEvaluator, async (req, res
   try {
     const { id } = req.params;
 
-    // Check if evaluation exists and belongs to this evaluator
-    const existingEvaluation = await getQuery(
-      'SELECT * FROM evaluations WHERE id = ? AND evaluator_id = ?',
+    // Single guarded UPDATE instead of check-then-write: the WHERE clause
+    // makes "already submitted" and "not found" indistinguishable from a
+    // lost race at the DB level, so two concurrent confirms can't both win.
+    const result = await runQuery(
+      `UPDATE evaluations SET is_submitted = true, submitted_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND evaluator_id = ? AND is_submitted = false`,
       [id, req.user.id]
     );
 
-    if (!existingEvaluation) {
-      return res.status(404).json({ error: 'Evaluation not found' });
-    }
+    if (!result.changes) {
+      const existingEvaluation = await getQuery(
+        'SELECT id FROM evaluations WHERE id = ? AND evaluator_id = ?',
+        [id, req.user.id]
+      );
 
-    if (existingEvaluation.is_submitted) {
+      if (!existingEvaluation) {
+        return res.status(404).json({ error: 'Evaluation not found' });
+      }
+
       return res.status(400).json({ error: 'Evaluation already submitted' });
     }
-
-    await runQuery(
-      'UPDATE evaluations SET is_submitted = true, submitted_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [id]
-    );
 
     const evaluation = await getQuery(
       'SELECT * FROM evaluations WHERE id = ?',
@@ -275,7 +274,7 @@ router.post('/', [
         `UPDATE evaluations SET 
          introduction_marks = ?, content_marks = ?, conclusion_marks = ?, 
          handwriting_marks = ?, grammar_marks = ?, special_points = ?, 
-         comments = ?, is_submitted = 1, submitted_at = ?, updated_at = CURRENT_TIMESTAMP
+         comments = ?, is_submitted = true, submitted_at = ?, updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
         [
           evaluationData.introduction_marks,
@@ -335,9 +334,9 @@ router.get('/my-evaluations', authenticateToken, requireEvaluator, async (req, r
     let params = [req.user.id];
 
     if (status === 'submitted') {
-      whereClause += ' AND e.is_submitted = 1';
+      whereClause += ' AND e.is_submitted = true';
     } else if (status === 'pending') {
-      whereClause += ' AND e.is_submitted = 0';
+      whereClause += ' AND e.is_submitted = false';
     }
 
     const evaluations = await allQuery(
@@ -440,4 +439,3 @@ router.put('/:evaluationId', [
 });
 
 module.exports = router;
-
