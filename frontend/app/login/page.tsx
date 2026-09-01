@@ -29,8 +29,8 @@ export default function LoginPage() {
     try {
       await login(data);
       toast.success('Login successful!');
-      // Force a page reload to ensure navigation works
-      window.location.href = '/';
+      // Use router.push instead of window.location.href to prevent URL issues
+      router.push('/');
     } catch (error: any) {
       toast.error(error.message || 'Login failed');
     } finally {
@@ -42,10 +42,16 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
         <div>
-          <div className="mx-auto h-12 w-12 flex items-center justify-center rounded-full bg-primary-100">
-            <BookOpen className="h-6 w-6 text-primary-600" />
+          {/* PCWT Logo */}
+          <div className="flex justify-center mb-8">
+            <img 
+              src="/logo.png" 
+              alt="PCWT Logo" 
+              className="h-24 w-auto object-contain"
+            />
           </div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+          
+          <h2 className="text-center text-3xl font-extrabold text-gray-900">
             Essay Competition Management
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
@@ -120,14 +126,6 @@ export default function LoginPage() {
             </button>
           </div>
 
-          <div className="text-center">
-            <p className="text-sm text-gray-600">
-              Default admin credentials: <br />
-              <span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded">
-                username: admin, password: admin123
-              </span>
-            </p>
-          </div>
         </form>
       </div>
     </div>

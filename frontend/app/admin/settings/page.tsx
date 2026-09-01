@@ -3,16 +3,18 @@
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Settings as SettingsIcon, Users, Upload, Save, Plus, Edit, Trash2, Eye, EyeOff, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Settings as SettingsIcon, Users, Upload, Save, Plus, Edit, Trash2, Eye, EyeOff, AlertTriangle, Download } from 'lucide-react';
 import { adminAPI } from '@/lib/api';
 import toast from 'react-hot-toast';
 
 interface User {
   id: number;
   username: string;
+  email: string;
   role: string;
-  created_at: string;
-  last_login?: string;
+  full_name: string;
+  is_active: boolean;
+  date_joined: string;
 }
 
 interface CompetitionSettings {
@@ -26,6 +28,13 @@ interface CompetitionSettings {
   handwriting_max: { value: string; description: string };
   grammar_max: { value: string; description: string };
   special_points_max: { value: string; description: string };
+  // Legacy field names for backward compatibility
+  max_introduction_marks?: { value: string; description: string };
+  max_content_marks?: { value: string; description: string };
+  max_conclusion_marks?: { value: string; description: string };
+  max_handwriting_marks?: { value: string; description: string };
+  max_grammar_marks?: { value: string; description: string };
+  max_special_points?: { value: string; description: string };
 }
 
 export default function Settings() {
@@ -81,8 +90,18 @@ export default function Settings() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    console.log('File input changed:', file);
     if (file) {
+      console.log('File selected:', {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        lastModified: file.lastModified
+      });
       setSelectedFile(file);
+    } else {
+      console.log('No file selected');
+      setSelectedFile(null);
     }
   };
 
@@ -91,6 +110,14 @@ export default function Settings() {
       toast.error('Please select a CSV file');
       return;
     }
+
+    // Debug: Log file details
+    console.log('Selected file:', {
+      name: selectedFile.name,
+      size: selectedFile.size,
+      type: selectedFile.type,
+      lastModified: selectedFile.lastModified
+    });
 
     try {
       const response = await adminAPI.importFromCSV(selectedFile);
@@ -101,8 +128,20 @@ export default function Settings() {
       const fileInput = document.getElementById('csv-file') as HTMLInputElement;
       if (fileInput) fileInput.value = '';
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to import CSV');
       console.error('CSV import error:', error);
+      console.error('Error response:', error.response?.data);
+      console.error('Error status:', error.response?.status);
+      
+      // More detailed error handling
+      if (error.response?.data?.error) {
+        toast.error(`CSV Import Error: ${error.response.data.error}`);
+      } else if (error.response?.status === 403) {
+        toast.error('Access denied: Admin role required');
+      } else if (error.response?.status === 400) {
+        toast.error('Bad request: Please check your CSV file format');
+      } else {
+        toast.error('Failed to import CSV. Please try again.');
+      }
     }
   };
 
@@ -111,7 +150,10 @@ export default function Settings() {
       const settingsToUpdate: any = {};
       if (settings) {
         Object.keys(settings).forEach(key => {
-          settingsToUpdate[key] = settings[key as keyof CompetitionSettings].value;
+          const setting = settings[key as keyof CompetitionSettings];
+          if (setting && typeof setting === 'object' && 'value' in setting) {
+            settingsToUpdate[key] = setting.value;
+          }
         });
       }
 
@@ -342,10 +384,22 @@ export default function Settings() {
                 <div className="text-sm text-gray-500">
                   <p className="font-medium mb-2">CSV Format Requirements:</p>
                   <ul className="list-disc list-inside space-y-1">
-                    <li>Columns: Timestamp of Registration, Full Name, Age, Qualification, Gender, Father Name, Email ID, Phone</li>
+                    <li><strong>Required Columns:</strong> Column 1, Full Name :, Age :, Qualification :, Gender :, Father's Name :, Email id :, Phone :</li>
+                    <li><strong>Note:</strong> Column names must include colons (:) exactly as shown</li>
                     <li>First row should contain headers</li>
+                    <li>Gender values: male, female, or other</li>
                     <li>File should be in CSV format (.csv)</li>
                   </ul>
+                  <div className="mt-3">
+                    <a 
+                      href="/sample_participants_template.csv" 
+                      download="sample_participants_template.csv"
+                      className="inline-flex items-center text-blue-600 hover:text-blue-800 text-sm font-medium"
+                    >
+                      <Download className="h-4 w-4 mr-1" />
+                      Download Sample Template
+                    </a>
+                  </div>
                 </div>
                 <button
                   onClick={handleImportFromCSV}
@@ -451,13 +505,12 @@ export default function Settings() {
                         type="number"
                         min="0"
                         max="50"
-                        value={settings.introduction_max?.value || settings.max_introduction_marks?.value || ''}
+                        value={settings.introduction_max?.value || ''}
                         onChange={(e) => {
                           const value = e.target.value;
                           setSettings(prev => prev ? {
                             ...prev,
-                            introduction_max: { ...prev.introduction_max, value },
-                            max_introduction_marks: { ...prev.max_introduction_marks, value }
+                            introduction_max: { ...prev.introduction_max, value }
                           } : null);
                         }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
@@ -472,13 +525,12 @@ export default function Settings() {
                         type="number"
                         min="0"
                         max="100"
-                        value={settings.content_max?.value || settings.max_content_marks?.value || ''}
+                        value={settings.content_max?.value || ''}
                         onChange={(e) => {
                           const value = e.target.value;
                           setSettings(prev => prev ? {
                             ...prev,
-                            content_max: { ...prev.content_max, value },
-                            max_content_marks: { ...prev.max_content_marks, value }
+                            content_max: { ...prev.content_max, value }
                           } : null);
                         }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
@@ -493,13 +545,12 @@ export default function Settings() {
                         type="number"
                         min="0"
                         max="50"
-                        value={settings.conclusion_max?.value || settings.max_conclusion_marks?.value || ''}
+                        value={settings.conclusion_max?.value || ''}
                         onChange={(e) => {
                           const value = e.target.value;
                           setSettings(prev => prev ? {
                             ...prev,
-                            conclusion_max: { ...prev.conclusion_max, value },
-                            max_conclusion_marks: { ...prev.max_conclusion_marks, value }
+                            conclusion_max: { ...prev.conclusion_max, value }
                           } : null);
                         }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
@@ -514,13 +565,12 @@ export default function Settings() {
                         type="number"
                         min="0"
                         max="50"
-                        value={settings.handwriting_max?.value || settings.max_handwriting_marks?.value || ''}
+                        value={settings.handwriting_max?.value || ''}
                         onChange={(e) => {
                           const value = e.target.value;
                           setSettings(prev => prev ? {
                             ...prev,
-                            handwriting_max: { ...prev.handwriting_max, value },
-                            max_handwriting_marks: { ...prev.max_handwriting_marks, value }
+                            handwriting_max: { ...prev.handwriting_max, value }
                           } : null);
                         }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
@@ -535,13 +585,12 @@ export default function Settings() {
                         type="number"
                         min="0"
                         max="50"
-                        value={settings.grammar_max?.value || settings.max_grammar_marks?.value || ''}
+                        value={settings.grammar_max?.value || ''}
                         onChange={(e) => {
                           const value = e.target.value;
                           setSettings(prev => prev ? {
                             ...prev,
-                            grammar_max: { ...prev.grammar_max, value },
-                            max_grammar_marks: { ...prev.max_grammar_marks, value }
+                            grammar_max: { ...prev.grammar_max, value }
                           } : null);
                         }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
@@ -556,13 +605,12 @@ export default function Settings() {
                         type="number"
                         min="0"
                         max="50"
-                        value={settings.special_points_max?.value || settings.max_special_points?.value || ''}
+                        value={settings.special_points_max?.value || ''}
                         onChange={(e) => {
                           const value = e.target.value;
                           setSettings(prev => prev ? {
                             ...prev,
-                            special_points_max: { ...prev.special_points_max, value },
-                            max_special_points: { ...prev.max_special_points, value }
+                            special_points_max: { ...prev.special_points_max, value }
                           } : null);
                         }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
@@ -577,12 +625,12 @@ export default function Settings() {
                   <h4 className="text-md font-medium text-blue-800 mb-2">Total Maximum Marks</h4>
                   <div className="text-2xl font-bold text-blue-900">
                     {(() => {
-                      const intro = parseInt(settings.introduction_max?.value || settings.max_introduction_marks?.value || '0');
-                      const content = parseInt(settings.content_max?.value || settings.max_content_marks?.value || '0');
-                      const conclusion = parseInt(settings.conclusion_max?.value || settings.max_conclusion_marks?.value || '0');
-                      const handwriting = parseInt(settings.handwriting_max?.value || settings.max_handwriting_marks?.value || '0');
-                      const grammar = parseInt(settings.grammar_max?.value || settings.max_grammar_marks?.value || '0');
-                      const special = parseInt(settings.special_points_max?.value || settings.max_special_points?.value || '0');
+                      const intro = parseInt(settings.introduction_max?.value || '0');
+                      const content = parseInt(settings.content_max?.value || '0');
+                      const conclusion = parseInt(settings.conclusion_max?.value || '0');
+                      const handwriting = parseInt(settings.handwriting_max?.value || '0');
+                      const grammar = parseInt(settings.grammar_max?.value || '0');
+                      const special = parseInt(settings.special_points_max?.value || '0');
                       return intro + content + conclusion + handwriting + grammar + special;
                     })()} Points
                   </div>
@@ -726,13 +774,19 @@ export default function Settings() {
                         Username
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Full Name
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Email
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Role
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Created
+                        Status
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Last Login
+                        Created
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Actions
@@ -745,16 +799,28 @@ export default function Settings() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                           {user.username}
                         </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {user.full_name}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {user.email || 'N/A'}
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getRoleColor(user.role)}`}>
                             {getRoleDisplayName(user.role)}
                           </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(user.created_at).toLocaleDateString()}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            user.is_active 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {user.is_active ? 'Active' : 'Inactive'}
+                          </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {user.last_login ? new Date(user.last_login).toLocaleDateString() : 'Never'}
+                          {new Date(user.date_joined).toLocaleDateString()}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex space-x-2">

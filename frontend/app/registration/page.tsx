@@ -3,8 +3,8 @@
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
-import { Search, User, Phone, Mail, Calendar, BookOpen, UserCheck, AlertCircle, Plus, CheckCircle, X } from 'lucide-react';
-import { participantsAPI } from '@/lib/api';
+import { Search, User, Phone, Mail, Calendar, BookOpen, UserCheck, AlertCircle, Plus, CheckCircle, X, Users, UserX } from 'lucide-react';
+import { participantsAPI, adminAPI } from '@/lib/api';
 import toast from 'react-hot-toast';
 
 interface Participant {
@@ -49,13 +49,85 @@ export default function RegistrationPage() {
     email: '',
     phone: ''
   });
+  const [attendanceStats, setAttendanceStats] = useState({
+    total_participants: 0,
+    present_participants: 0,
+    absent_participants: 0,
+    attendance_percentage: 0
+  });
+  const [validationErrors, setValidationErrors] = useState<{[key: string]: string}>({});
+  const [apiError, setApiError] = useState<string>('');
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!loading && (!user || user.role !== 'registration_desk')) {
       router.push('/login');
+    } else if (!loading && user && user.role === 'registration_desk') {
+      fetchAttendanceStats();
     }
   }, [user, loading, router]);
+
+  const fetchAttendanceStats = async () => {
+    try {
+      const response = await adminAPI.getStats();
+      const stats = response.data.stats;
+      
+      setAttendanceStats({
+        total_participants: stats.total_participants,
+        present_participants: stats.present_participants,
+        absent_participants: stats.absent_participants,
+        attendance_percentage: stats.attendance_percentage
+      });
+    } catch (error: any) {
+      console.error('Error fetching attendance stats:', error);
+    }
+  };
+
+  const validateSpotRegistrationForm = (): boolean => {
+    const errors: {[key: string]: string} = {};
+    
+    // Required field validations
+    if (!spotForm.full_name.trim()) {
+      errors.full_name = 'Full name is required';
+    } else if (spotForm.full_name.trim().length < 2) {
+      errors.full_name = 'Full name must be at least 2 characters';
+    }
+    
+    if (!spotForm.age.trim()) {
+      errors.age = 'Age is required';
+    } else {
+      const age = parseInt(spotForm.age);
+      if (isNaN(age) || age < 1 || age > 120) {
+        errors.age = 'Age must be a valid number between 1 and 120';
+      }
+    }
+    
+    if (!spotForm.gender.trim()) {
+      errors.gender = 'Gender is required';
+    } else if (!['male', 'female', 'other'].includes(spotForm.gender)) {
+      errors.gender = 'Please select a valid gender';
+    }
+    
+    // Optional field validations
+    if (spotForm.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(spotForm.email.trim())) {
+      errors.email = 'Please enter a valid email address';
+    }
+    
+    if (spotForm.phone.trim() && !/^[0-9+\-\s()]{10,15}$/.test(spotForm.phone.trim())) {
+      errors.phone = 'Please enter a valid phone number (10-15 digits)';
+    }
+    
+    if (spotForm.qualification.trim() && spotForm.qualification.trim().length < 2) {
+      errors.qualification = 'Qualification must be at least 2 characters if provided';
+    }
+    
+    if (spotForm.father_name.trim() && spotForm.father_name.trim().length < 2) {
+      errors.father_name = 'Father\'s name must be at least 2 characters if provided';
+    }
+    
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
 
   const handleSearch = async () => {
     if (!searchTerm.trim()) {
@@ -99,8 +171,11 @@ export default function RegistrationPage() {
       await participantsAPI.markPresent(selectedParticipant.id);
       toast.success(`${selectedParticipant.full_name} marked as present!`);
       
-      // Optionally refresh participant data to show updated status
-      // You could add a visual indicator here
+      // Refresh attendance stats
+      fetchAttendanceStats();
+      
+      // Update the selected participant's status
+      setSelectedParticipant(prev => prev ? { ...prev, attendance_marked: true } : null);
       
     } catch (error: any) {
       console.error('Mark present error:', error);
@@ -109,8 +184,13 @@ export default function RegistrationPage() {
   };
 
   const handleSpotRegistration = async () => {
-    if (!spotForm.full_name.trim() || !spotForm.age.trim() || !spotForm.gender.trim()) {
-      toast.error('Please fill in all required fields');
+    // Clear previous errors
+    setValidationErrors({});
+    setApiError('');
+    
+    // Validate form
+    if (!validateSpotRegistrationForm()) {
+      toast.error('Please fix the validation errors before submitting');
       return;
     }
 
@@ -119,18 +199,37 @@ export default function RegistrationPage() {
       const participantData = {
         full_name: spotForm.full_name.trim(),
         age: parseInt(spotForm.age),
-        qualification: spotForm.qualification.trim(),
+        qualification: spotForm.qualification.trim() || '',
         gender: spotForm.gender.trim(),
-        father_name: spotForm.father_name.trim(),
-        email: spotForm.email.trim(),
-        phone: spotForm.phone.trim(),
+        father_name: spotForm.father_name.trim() || '',
+        email: spotForm.email.trim() || '',
+        phone: spotForm.phone.trim() || '',
         is_spot_registration: true
       };
 
+      console.log('🔍 Spot registration data being sent:', participantData);
+      
       const response = await participantsAPI.create(participantData);
-      const newParticipant = response.data.participant;
+      console.log('🔍 Spot registration response:', response);
+      console.log('🔍 Response data:', response.data);
+      
+      // Handle different possible response structures
+      const newParticipant = response.data.participant || response.data || response.data.data;
+      
+      if (!newParticipant) {
+        console.error('🚨 No participant data in response:', response.data);
+        throw new Error('Invalid response from server - no participant data received');
+      }
+      
+      if (!newParticipant.registration_number) {
+        console.error('🚨 No registration number in participant data:', newParticipant);
+        throw new Error('Invalid response from server - no registration number received');
+      }
       
       toast.success(`Spot registration successful! Registration number: ${newParticipant.registration_number}`);
+      
+      // Refresh attendance stats
+      fetchAttendanceStats();
       
       // Reset form and close modal
       setSpotForm({
@@ -144,20 +243,70 @@ export default function RegistrationPage() {
       });
       setShowSpotRegistration(false);
       
-      // Optionally, you could automatically search for the newly created participant
-      // setSearchTerm(newParticipant.registration_number);
-      // handleSearch();
-      
     } catch (error: any) {
-      console.error('Spot registration error:', error);
+      console.error('🚨 Spot registration error:', error);
+      console.error('🚨 Error response:', error.response);
+      console.error('🚨 Error response data:', error.response?.data);
+      console.error('🚨 Error status:', error.response?.status);
       
-      // Handle duplicate participant error
-      if (error.response?.data?.error === 'Participant already exists' && error.response?.data?.existing_participant) {
-        const existing = error.response.data.existing_participant;
-        toast.error(`Participant already exists! Registration Number: ${existing.registration_number}`);
-      } else {
-        toast.error(error.response?.data?.error || 'Failed to register participant');
+      // Extract detailed error information
+      let errorMessage = 'Failed to register participant';
+      let errorDetails = '';
+      
+      if (error.response?.data) {
+        const errorData = error.response.data;
+        console.log('🔍 Error data structure:', errorData);
+        
+        // Handle different types of API errors
+        if (errorData.error) {
+          errorMessage = errorData.error;
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        } else if (errorData.detail) {
+          errorMessage = errorData.detail;
+        } else if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        }
+        
+        // Handle validation errors from backend
+        if (errorData.errors) {
+          errorDetails = Object.values(errorData.errors).flat().join(', ');
+        } else if (errorData.field_errors) {
+          errorDetails = Object.entries(errorData.field_errors)
+            .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(', ') : errors}`)
+            .join('; ');
+        } else if (errorData.validation_errors) {
+          errorDetails = Object.entries(errorData.validation_errors)
+            .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(', ') : errors}`)
+            .join('; ');
+        }
+        
+        // Handle duplicate participant error
+        if (errorData.error === 'Participant already exists' && errorData.existing_participant) {
+          const existing = errorData.existing_participant;
+          errorMessage = `Participant already exists! Registration Number: ${existing.registration_number}`;
+        }
+        
+        // Handle specific HTTP status codes
+        if (error.response.status === 400) {
+          errorMessage = 'Invalid data provided. Please check your input.';
+        } else if (error.response.status === 409) {
+          errorMessage = 'Participant already exists with this information.';
+        } else if (error.response.status === 500) {
+          errorMessage = 'Server error. Please try again later.';
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      } else if (error.code === 'NETWORK_ERROR') {
+        errorMessage = 'Network error. Please check your connection.';
       }
+      
+      // Set API error for display
+      setApiError(errorDetails ? `${errorMessage}. Details: ${errorDetails}` : errorMessage);
+      
+      // Show toast with error
+      toast.error(errorMessage);
+      
     } finally {
       setIsSubmittingSpot(false);
     }
@@ -178,6 +327,8 @@ export default function RegistrationPage() {
 
   const closeSpotRegistration = () => {
     setShowSpotRegistration(false);
+    setValidationErrors({});
+    setApiError('');
     setSpotForm({
       full_name: '',
       age: '',
@@ -210,11 +361,23 @@ export default function RegistrationPage() {
       <div className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
-            <div>
+            {/* Left Section - Title */}
+            <div className="flex-1">
               <h1 className="text-2xl font-bold text-gray-900">Registration Desk</h1>
               <p className="text-sm text-gray-600">Search participants, validate details, and handle spot registrations</p>
             </div>
-            <div className="flex items-center space-x-4">
+            
+            {/* Center Section - Logo */}
+            <div className="flex justify-center flex-1">
+              <img 
+                src="/logo.png" 
+                alt="PCWT Logo" 
+                className="h-12 w-auto object-contain"
+              />
+            </div>
+            
+            {/* Right Section - User Info */}
+            <div className="flex justify-end items-center space-x-4 flex-1">
               <span className="text-sm text-gray-600">Welcome, {user.username}</span>
               <button
                 onClick={() => router.push('/login')}
@@ -228,6 +391,66 @@ export default function RegistrationPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Attendance Statistics */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <Users className="h-6 w-6 text-blue-600" />
+                </div>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">Total Participants</dt>
+                    <dd className="text-lg font-medium text-gray-900">{attendanceStats.total_participants}</dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <UserCheck className="h-6 w-6 text-green-600" />
+                </div>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">Present Participants</dt>
+                    <dd className="text-lg font-medium text-gray-900">{attendanceStats.present_participants}</dd>
+                    <dd className="text-sm text-gray-500">
+                      {attendanceStats.attendance_percentage.toFixed(1)}% attendance rate
+                    </dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <UserX className="h-6 w-6 text-red-600" />
+                </div>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">Absent Participants</dt>
+                    <dd className="text-lg font-medium text-gray-900">{attendanceStats.absent_participants}</dd>
+                    <dd className="text-sm text-gray-500">
+                      {attendanceStats.total_participants > 0 
+                        ? `${Math.round((attendanceStats.absent_participants / attendanceStats.total_participants) * 100)}%`
+                        : '0%'
+                      }
+                    </dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Search Section */}
         <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
           <div className="flex items-center space-x-4">
@@ -505,6 +728,23 @@ export default function RegistrationPage() {
                 </button>
               </div>
               
+              {/* API Error Display */}
+              {apiError && (
+                <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-4">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <AlertCircle className="h-5 w-5 text-red-400" />
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-red-800">Registration Error</h3>
+                      <div className="mt-2 text-sm text-red-700">
+                        <p>{apiError}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -515,9 +755,14 @@ export default function RegistrationPage() {
                       type="text"
                       value={spotForm.full_name}
                       onChange={(e) => setSpotForm(prev => ({ ...prev, full_name: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
+                        validationErrors.full_name ? 'border-red-300' : 'border-gray-300'
+                      }`}
                       placeholder="Enter full name"
                     />
+                    {validationErrors.full_name && (
+                      <p className="mt-1 text-sm text-red-600">{validationErrors.full_name}</p>
+                    )}
                   </div>
 
                   <div>
@@ -526,11 +771,18 @@ export default function RegistrationPage() {
                     </label>
                     <input
                       type="number"
+                      min="1"
+                      max="120"
                       value={spotForm.age}
                       onChange={(e) => setSpotForm(prev => ({ ...prev, age: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
+                        validationErrors.age ? 'border-red-300' : 'border-gray-300'
+                      }`}
                       placeholder="Enter age"
                     />
+                    {validationErrors.age && (
+                      <p className="mt-1 text-sm text-red-600">{validationErrors.age}</p>
+                    )}
                   </div>
 
                   <div>
@@ -540,13 +792,18 @@ export default function RegistrationPage() {
                     <select
                       value={spotForm.gender}
                       onChange={(e) => setSpotForm(prev => ({ ...prev, gender: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
+                        validationErrors.gender ? 'border-red-300' : 'border-gray-300'
+                      }`}
                     >
                       <option value="">Select gender</option>
                       <option value="male">Male</option>
                       <option value="female">Female</option>
                       <option value="other">Other</option>
                     </select>
+                    {validationErrors.gender && (
+                      <p className="mt-1 text-sm text-red-600">{validationErrors.gender}</p>
+                    )}
                   </div>
 
                   <div>
@@ -557,9 +814,14 @@ export default function RegistrationPage() {
                       type="text"
                       value={spotForm.qualification}
                       onChange={(e) => setSpotForm(prev => ({ ...prev, qualification: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
+                        validationErrors.qualification ? 'border-red-300' : 'border-gray-300'
+                      }`}
                       placeholder="Enter qualification"
                     />
+                    {validationErrors.qualification && (
+                      <p className="mt-1 text-sm text-red-600">{validationErrors.qualification}</p>
+                    )}
                   </div>
 
                   <div>
@@ -570,9 +832,14 @@ export default function RegistrationPage() {
                       type="text"
                       value={spotForm.father_name}
                       onChange={(e) => setSpotForm(prev => ({ ...prev, father_name: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
+                        validationErrors.father_name ? 'border-red-300' : 'border-gray-300'
+                      }`}
                       placeholder="Enter father's name"
                     />
+                    {validationErrors.father_name && (
+                      <p className="mt-1 text-sm text-red-600">{validationErrors.father_name}</p>
+                    )}
                   </div>
 
                   <div>
@@ -583,9 +850,14 @@ export default function RegistrationPage() {
                       type="email"
                       value={spotForm.email}
                       onChange={(e) => setSpotForm(prev => ({ ...prev, email: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
+                        validationErrors.email ? 'border-red-300' : 'border-gray-300'
+                      }`}
                       placeholder="Enter email"
                     />
+                    {validationErrors.email && (
+                      <p className="mt-1 text-sm text-red-600">{validationErrors.email}</p>
+                    )}
                   </div>
 
                   <div>
@@ -596,9 +868,14 @@ export default function RegistrationPage() {
                       type="tel"
                       value={spotForm.phone}
                       onChange={(e) => setSpotForm(prev => ({ ...prev, phone: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
+                        validationErrors.phone ? 'border-red-300' : 'border-gray-300'
+                      }`}
                       placeholder="Enter phone number"
                     />
+                    {validationErrors.phone && (
+                      <p className="mt-1 text-sm text-red-600">{validationErrors.phone}</p>
+                    )}
                   </div>
                 </div>
 

@@ -1,52 +1,51 @@
-# Frontend Dockerfile for Railway (Next.js)
-FROM node:18-alpine AS base
-
-# Install dependencies only when needed
-FROM base AS deps
-RUN apk add --no-cache libc6-compat
-WORKDIR /app
-
-# Copy package files
-COPY package*.json ./
+# Use Node.js 18 Alpine image
+FROM node:18-alpine
 
 # Install dependencies
-RUN npm config set fund false && \
-    npm config set audit false && \
-    npm ci --only=production || npm install --only=production
+RUN apk add --no-cache libc6-compat curl
 
-# Rebuild the source code only when needed
-FROM base AS builder
+# Set working directory
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+
+# Add cache-busting layer to force rebuild
+ARG CACHE_BUST=1
+RUN echo "Cache bust: $CACHE_BUST"
+
+# Copy package files
+COPY package.json package-lock.json* ./
+
+# Use yarn instead of npm
+RUN yarn config set registry https://registry.npmjs.org/ && \
+    yarn config set strict-ssl false && \
+    yarn install --frozen-lockfile
+
+# Copy source code
 COPY . .
 
-# Build Next.js app
-RUN npm run build
-
-# Production image, copy all the files and run next
-FROM base AS runner
-WORKDIR /app
-
+# Set environment variables for build
+ENV NEXT_PUBLIC_API_URL=https://essaycompetitionbackend-production-e729.up.railway.app/api
 ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
 
-# Create non-root user
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
+# Clean any existing build
+RUN rm -rf .next
 
-# Copy built application
-COPY --from=builder /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# Build the application using yarn
+RUN yarn build
 
+# Create a non-root user
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Set correct permissions
+RUN chown -R nextjs:nodejs /app
 USER nextjs
 
 # Expose port
 EXPOSE 3000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:3000 || exit 1
 
-# Start Next.js
-CMD ["node", "server.js"]
+# Start the application
+CMD ["yarn", "start"]

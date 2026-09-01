@@ -19,7 +19,9 @@ interface Participant {
   father_name: string;
   registration_timestamp: string;
   is_spot_registration: boolean;
-  registration_date: string;
+  attendance_marked: boolean;
+  attendance_marked_at: string | null;
+  created_at: string;
 }
 
 export default function ManageUsers() {
@@ -65,6 +67,11 @@ export default function ManageUsers() {
     fetchParticipants();
   }, [currentPage, debouncedSearchTerm]);
 
+  // Debug participants state
+  useEffect(() => {
+    console.log('Participants state updated:', participants, 'Length:', participants.length);
+  }, [participants]);
+
   // Restore focus to search input after search completes
   useEffect(() => {
     if (!isSearching && !isTyping && searchInputRef.current && searchTerm) {
@@ -88,13 +95,25 @@ export default function ManageUsers() {
         limit: pageSize,
         search: debouncedSearchTerm
       };
+      console.log('Fetching participants with params:', params);
       const response = await participantsAPI.getAll(params);
-      setParticipants(response.data.participants || []);
-      setTotalPages(response.data.pagination?.totalPages || 1);
-      setTotalCount(response.data.pagination?.total || 0);
+      console.log('Full API Response:', response);
+      console.log('Response data:', response.data);
+      console.log('Results array:', response.data.results);
+      console.log('Count:', response.data.count);
+      
+      setParticipants(response.data.results || []);
+      
+      // Calculate pagination from backend response
+      const totalCount = response.data.count || 0;
+      const totalPages = Math.ceil(totalCount / pageSize);
+      console.log('Calculated totalCount:', totalCount, 'totalPages:', totalPages);
+      setTotalPages(totalPages);
+      setTotalCount(totalCount);
     } catch (error: any) {
       toast.error('Failed to load participants');
       console.error('Error fetching participants:', error);
+      console.error('Error response:', error.response?.data);
     } finally {
       setLoading(false);
     }
@@ -140,7 +159,7 @@ export default function ManageUsers() {
         p.age || '',
         p.qualification || '',
         p.father_name || '',
-        new Date(p.registration_date).toLocaleDateString()
+        new Date(p.registration_timestamp).toLocaleDateString()
       ])
     ].map(row => row.join(',')).join('\n');
 
@@ -175,7 +194,8 @@ export default function ManageUsers() {
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
-            <div className="flex items-center">
+            {/* Left Section - Back Button and Title */}
+            <div className="flex items-center flex-1">
               <button
                 onClick={() => router.push('/admin/dashboard')}
                 className="mr-4 p-2 text-gray-400 hover:text-gray-600"
@@ -187,7 +207,18 @@ export default function ManageUsers() {
                 <p className="text-gray-600">Manage competition participants</p>
               </div>
             </div>
-            <div className="flex space-x-3">
+            
+            {/* Center Section - Logo */}
+            <div className="flex justify-center flex-1">
+              <img 
+                src="/logo.png" 
+                alt="PCWT Logo" 
+                className="h-16 w-auto object-contain"
+              />
+            </div>
+            
+            {/* Right Section - Action Buttons */}
+            <div className="flex justify-end items-center space-x-3 flex-1">
               <button
                 onClick={handleExportParticipants}
                 className="flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
@@ -280,6 +311,9 @@ export default function ManageUsers() {
                       Type
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Attendance
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
@@ -318,7 +352,7 @@ export default function ManageUsers() {
                         {participant.father_name || 'N/A'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(participant.registration_date).toLocaleDateString()}
+                        {new Date(participant.registration_timestamp).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
@@ -327,6 +361,15 @@ export default function ManageUsers() {
                             : 'bg-green-100 text-green-800'
                         }`}>
                           {participant.is_spot_registration ? 'Spot' : 'Pre-registered'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          participant.attendance_marked 
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {participant.attendance_marked ? 'Present' : 'Absent'}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
