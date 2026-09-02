@@ -274,7 +274,10 @@ export default function RegistrationPage() {
         }
         
         // Handle validation errors from backend
-        if (errorData.errors) {
+        if (Array.isArray(errorData.errors)) {
+          // express-validator shape: [{ msg, param, ... }]
+          errorDetails = errorData.errors.map((e: any) => e.msg || e.param).join(', ');
+        } else if (errorData.errors) {
           errorDetails = Object.values(errorData.errors).flat().join(', ');
         } else if (errorData.field_errors) {
           errorDetails = Object.entries(errorData.field_errors)
@@ -375,7 +378,7 @@ export default function RegistrationPage() {
             {/* Center Section - Logo */}
             <div className="flex justify-center flex-1">
               <img 
-                src="/logo.png" 
+                src="/BCA.png"
                 alt="PCWT Logo" 
                 className="h-12 w-auto object-contain"
               />
