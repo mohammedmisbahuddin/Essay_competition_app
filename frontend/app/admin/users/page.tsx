@@ -17,7 +17,8 @@ interface Participant {
   age: number;
   qualification: string;
   father_name: string;
-  registration_timestamp: string;
+  registration_timestamp: string | null;
+  registration_date: string;
   is_spot_registration: boolean;
   attendance_marked: boolean;
   attendance_marked_at: string | null;
@@ -97,17 +98,12 @@ export default function ManageUsers() {
       };
       console.log('Fetching participants with params:', params);
       const response = await participantsAPI.getAll(params);
-      console.log('Full API Response:', response);
-      console.log('Response data:', response.data);
-      console.log('Results array:', response.data.results);
-      console.log('Count:', response.data.count);
-      
-      setParticipants(response.data.results || []);
-      
+
+      setParticipants(response.data.participants || []);
+
       // Calculate pagination from backend response
-      const totalCount = response.data.count || 0;
-      const totalPages = Math.ceil(totalCount / pageSize);
-      console.log('Calculated totalCount:', totalCount, 'totalPages:', totalPages);
+      const totalCount = response.data.pagination?.total || 0;
+      const totalPages = response.data.pagination?.totalPages || Math.ceil(totalCount / pageSize);
       setTotalPages(totalPages);
       setTotalCount(totalCount);
     } catch (error: any) {
@@ -159,7 +155,7 @@ export default function ManageUsers() {
         p.age || '',
         p.qualification || '',
         p.father_name || '',
-        new Date(p.registration_timestamp).toLocaleDateString()
+        new Date(p.registration_timestamp || p.registration_date).toLocaleDateString()
       ])
     ].map(row => row.join(',')).join('\n');
 
@@ -352,7 +348,7 @@ export default function ManageUsers() {
                         {participant.father_name || 'N/A'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(participant.registration_timestamp).toLocaleDateString()}
+                        {new Date(participant.registration_timestamp || participant.registration_date).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${

@@ -306,6 +306,115 @@ const generateStatistics = async () => {
   }
 };
 
+// Attendance/gender/age breakdown for a WHERE clause + params scoping the
+// participants table (used both for the overall stats and per age-category)
+const getAttendanceByGender = async (whereClause, params) => {
+  return allQuery(`
+    SELECT
+      gender,
+      COUNT(*) as total,
+      SUM(CASE WHEN attendance_marked = true THEN 1 ELSE 0 END) as present,
+      SUM(CASE WHEN attendance_marked != true OR attendance_marked IS NULL THEN 1 ELSE 0 END) as absent
+    FROM participants
+    ${whereClause}
+    GROUP BY gender
+  `, params).then((rows) => rows.map((row) => ({
+    gender: row.gender,
+    total: row.total,
+    present: row.present,
+    absent: row.absent,
+    attendance_rate: row.total > 0 ? Math.round((row.present / row.total) * 10000) / 100 : 0
+  })));
+};
+
+const getAgeCategoryStats = async (ageRange, minAge, maxAge) => {
+  const whereClause = 'WHERE age BETWEEN ? AND ?';
+  const params = [minAge, maxAge];
+
+  const totals = await getQuery(
+    `SELECT
+       COUNT(*) as total,
+       SUM(CASE WHEN attendance_marked = true THEN 1 ELSE 0 END) as present
+     FROM participants ${whereClause}`,
+    params
+  );
+  const total = totals?.total || 0;
+  const present = totals?.present || 0;
+
+  const genderDistribution = await allQuery(
+    `SELECT gender, COUNT(*) as count FROM participants ${whereClause} GROUP BY gender`,
+    params
+  );
+  const attendanceByGender = await getAttendanceByGender(whereClause, params);
+
+  return {
+    age_range: ageRange,
+    total_participants: total,
+    present_participants: present,
+    absent_participants: total - present,
+    attendance_rate: total > 0 ? Math.round((present / total) * 10000) / 100 : 0,
+    gender_distribution: genderDistribution,
+    attendance_by_gender: attendanceByGender
+  };
+};
+
+// Full stats payload for the live admin dashboard / stats screens
+const generateLiveStats = async () => {
+  const totalParticipantsRow = await getQuery('SELECT COUNT(*) as count FROM participants');
+  const totalParticipants = totalParticipantsRow.count;
+
+  const genderDistribution = await allQuery(
+    'SELECT gender, COUNT(*) as count FROM participants GROUP BY gender'
+  );
+
+  const attendanceByGender = await getAttendanceByGender('', []);
+  const presentParticipants = attendanceByGender.reduce((sum, row) => sum + row.present, 0);
+  const absentParticipants = totalParticipants - presentParticipants;
+
+  const ageCategories = {
+    gen_1: await getAgeCategoryStats('17-22', 17, 22),
+    gen_2: await getAgeCategoryStats('23-70', 23, 70)
+  };
+
+  const spotRegistrations = await getQuery(
+    'SELECT COUNT(*) as count FROM participants WHERE is_spot_registration = true'
+  );
+
+  const evaluationsCompleted = await getQuery(
+    'SELECT COUNT(*) as count FROM evaluations WHERE is_submitted = true'
+  );
+  const totalEvaluations = await getQuery('SELECT COUNT(*) as count FROM evaluations');
+
+  const topPerformers = await allQuery(`
+    SELECT p.registration_number, p.full_name, p.gender,
+           AVG(e.total_marks) as average_score,
+           COUNT(e.id) as evaluation_count
+    FROM participants p
+    JOIN evaluations e ON p.id = e.participant_id AND e.is_submitted = true
+    GROUP BY p.id, p.registration_number, p.full_name, p.gender
+    ORDER BY average_score DESC
+    LIMIT 10
+  `);
+
+  return {
+    stats: {
+      total_participants: totalParticipants,
+      gender_distribution: genderDistribution,
+      attendance_by_gender: attendanceByGender,
+      age_categories: ageCategories,
+      spot_registrations: spotRegistrations.count,
+      present_participants: presentParticipants,
+      absent_participants: absentParticipants,
+      attendance_percentage: totalParticipants > 0
+        ? Math.round((presentParticipants / totalParticipants) * 10000) / 100
+        : 0,
+      evaluations_completed: evaluationsCompleted.count,
+      total_evaluations: totalEvaluations.count
+    },
+    top_performers: topPerformers
+  };
+};
+
 module.exports = {
   REGISTRATION_PREFIX,
   generateRegistrationNumber,
@@ -316,5 +425,6 @@ module.exports = {
   isValidDate,
   calculateAge,
   formatRegistrationNumber,
-  generateStatistics
+  generateStatistics,
+  generateLiveStats
 };

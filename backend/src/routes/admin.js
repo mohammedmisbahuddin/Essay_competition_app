@@ -6,7 +6,7 @@ const path = require('path');
 const bcrypt = require('bcrypt');
 const { getQuery, allQuery, runQuery } = require('../utils/database');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
-const { generateStatistics, cleanParticipantData, createWithUniqueRegistrationNumber } = require('../utils/helpers');
+const { generateStatistics, generateLiveStats, cleanParticipantData, createWithUniqueRegistrationNumber } = require('../utils/helpers');
 
 const router = express.Router();
 
@@ -65,11 +65,13 @@ router.get('/dashboard', authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
-// Get dashboard statistics only
-router.get('/stats', authenticateToken, requireAdmin, async (req, res) => {
+// Get live dashboard statistics (attendance/gender/age breakdown, top performers)
+// Any authenticated role can read this - registration desk and evaluators
+// need the participant/attendance counts on their own pages too.
+router.get('/stats', authenticateToken, async (req, res) => {
   try {
-    const stats = await generateStatistics();
-    res.json(stats);
+    const liveStats = await generateLiveStats();
+    res.json(liveStats);
   } catch (error) {
     console.error('Get stats error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -270,7 +272,7 @@ router.get('/results', authenticateToken, requireAdmin, async (req, res) => {
     const sortDirection = sortOrder.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
     const results = await allQuery(`
-      SELECT p.id, p.registration_number, p.full_name, p.gender, p.qualification,
+      SELECT p.id, p.registration_number, p.full_name, p.gender, p.age, p.qualification,
              AVG(e.total_marks) as average_marks,
              COUNT(e.id) as evaluation_count,
              MIN(e.total_marks) as min_marks,
@@ -279,7 +281,7 @@ router.get('/results', authenticateToken, requireAdmin, async (req, res) => {
       FROM participants p
       JOIN evaluations e ON p.id = e.participant_id
       ${whereClause}
-      GROUP BY p.id, p.registration_number, p.full_name, p.gender, p.qualification
+      GROUP BY p.id, p.registration_number, p.full_name, p.gender, p.age, p.qualification
       ORDER BY ${sortColumn} ${sortDirection}
       LIMIT ? OFFSET ?
     `, [...params, limit, offset]);
@@ -440,19 +442,19 @@ router.put('/settings', authenticateToken, requireAdmin, async (req, res) => {
 router.get('/export/results', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const results = await allQuery(`
-      SELECT p.registration_number, p.full_name, p.gender, p.email, p.phone, p.qualification,
+      SELECT p.registration_number, p.full_name, p.gender, p.age, p.email, p.phone, p.qualification,
              AVG(e.total_marks) as average_marks,
              COUNT(e.id) as evaluation_count
       FROM participants p
       LEFT JOIN evaluations e ON p.id = e.participant_id AND e.is_submitted = true
-      GROUP BY p.id, p.registration_number, p.full_name, p.gender, p.email, p.phone, p.qualification
+      GROUP BY p.id, p.registration_number, p.full_name, p.gender, p.age, p.email, p.phone, p.qualification
       ORDER BY average_marks DESC
     `);
 
     // Convert to CSV
-    const csvHeader = 'Registration Number,Full Name,Gender,Email,Phone,Qualification,Average Marks,Evaluation Count\n';
-    const csvData = results.map(row => 
-      `"${row.registration_number}","${row.full_name}","${row.gender}","${row.email || ''}","${row.phone || ''}","${row.qualification || ''}","${row.average_marks || 0}","${row.evaluation_count || 0}"`
+    const csvHeader = 'Registration Number,Full Name,Gender,Age,Email,Phone,Qualification,Average Marks,Evaluation Count\n';
+    const csvData = results.map(row =>
+      `"${row.registration_number}","${row.full_name}","${row.gender}","${row.age || ''}","${row.email || ''}","${row.phone || ''}","${row.qualification || ''}","${row.average_marks || 0}","${row.evaluation_count || 0}"`
     ).join('\n');
 
     const csv = csvHeader + csvData;

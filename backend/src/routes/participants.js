@@ -17,10 +17,11 @@ router.get('/search', authenticateToken, requireRole(['invigilator', 'registrati
 
     const searchPattern = `%${searchTerm}%`;
     const participantsQuery = `
-      SELECT id, registration_number, full_name, email, phone, gender, 
-             age, qualification, father_name, registration_timestamp, 
-             is_spot_registration, registration_date, created_at
-      FROM participants 
+      SELECT id, registration_number, full_name, email, phone, gender,
+             age, qualification, father_name, registration_timestamp,
+             is_spot_registration, registration_date, created_at,
+             attendance_marked, attendance_marked_at
+      FROM participants
       WHERE (full_name LIKE ? OR registration_number LIKE ? OR email LIKE ? OR phone LIKE ?)
       ORDER BY full_name ASC
       LIMIT 20
@@ -64,10 +65,11 @@ router.get('/', authenticateToken, async (req, res) => {
 
     // Get participants
     const participantsQuery = `
-      SELECT id, registration_number, full_name, email, phone, gender, 
-             age, qualification, father_name, registration_timestamp, 
-             is_spot_registration, registration_date, created_at
-      FROM participants 
+      SELECT id, registration_number, full_name, email, phone, gender,
+             age, qualification, father_name, registration_timestamp,
+             is_spot_registration, registration_date, created_at,
+             attendance_marked, attendance_marked_at
+      FROM participants
       ${whereClause}
       ORDER BY created_at DESC
       LIMIT ? OFFSET ?
@@ -158,11 +160,11 @@ router.get('/validate/:registrationNumber', authenticateToken, requireRole(['inv
 router.post('/', [
   body('full_name').notEmpty().withMessage('Full name is required'),
   body('gender').isIn(['male', 'female', 'other']).withMessage('Valid gender is required'),
-  body('email').optional().isEmail().withMessage('Valid email is required'),
-  body('phone').optional().isLength({ min: 10 }).withMessage('Valid phone number is required'),
-  body('age').optional().isInt({ min: 1, max: 100 }).withMessage('Age must be between 1 and 100'),
-  body('qualification').optional().isLength({ max: 200 }).withMessage('Qualification too long'),
-  body('father_name').optional().isLength({ max: 100 }).withMessage('Father name too long')
+  body('email').optional({ checkFalsy: true }).isEmail().withMessage('Valid email is required'),
+  body('phone').optional({ checkFalsy: true }).isLength({ min: 10 }).withMessage('Valid phone number is required'),
+  body('age').optional({ checkFalsy: true }).isInt({ min: 1, max: 100 }).withMessage('Age must be between 1 and 100'),
+  body('qualification').optional({ checkFalsy: true }).isLength({ max: 200 }).withMessage('Qualification too long'),
+  body('father_name').optional({ checkFalsy: true }).isLength({ max: 100 }).withMessage('Father name too long')
 ], authenticateToken, requireRegistrationDesk, async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -216,8 +218,8 @@ router.post('/', [
 // Update participant
 router.put('/:id', [
   body('full_name').optional().notEmpty().withMessage('Full name cannot be empty'),
-  body('email').optional().isEmail().withMessage('Valid email is required'),
-  body('phone').optional().isLength({ min: 10 }).withMessage('Valid phone number is required'),
+  body('email').optional({ checkFalsy: true }).isEmail().withMessage('Valid email is required'),
+  body('phone').optional({ checkFalsy: true }).isLength({ min: 10 }).withMessage('Valid phone number is required'),
   body('gender').optional().isIn(['male', 'female', 'other']).withMessage('Valid gender is required')
 ], authenticateToken, requireRegistrationDesk, async (req, res) => {
   try {
