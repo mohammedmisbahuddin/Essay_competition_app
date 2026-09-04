@@ -59,7 +59,6 @@ export default function RegistrationPage() {
   });
   const [validationErrors, setValidationErrors] = useState<{[key: string]: string}>({});
   const [apiError, setApiError] = useState<string>('');
-  const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [editForm, setEditForm] = useState<{ age: string; gender: string }>({ age: '', gender: '' });
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -172,18 +171,7 @@ export default function RegistrationPage() {
 
   const handleParticipantSelect = (participant: Participant) => {
     setSelectedParticipant(participant);
-    setIsEditingDetails(false);
     setEditForm({ age: String(participant.age ?? ''), gender: participant.gender || '' });
-  };
-
-  const startEditDetails = () => {
-    if (!selectedParticipant) return;
-    setEditForm({ age: String(selectedParticipant.age ?? ''), gender: selectedParticipant.gender || '' });
-    setIsEditingDetails(true);
-  };
-
-  const cancelEditDetails = () => {
-    setIsEditingDetails(false);
   };
 
   const saveEditDetails = async () => {
@@ -194,7 +182,7 @@ export default function RegistrationPage() {
       toast.error('Please enter a valid age between 1 and 120');
       return;
     }
-    if (!editForm.gender || !['male', 'female', 'other'].includes(editForm.gender)) {
+    if (!editForm.gender || !['male', 'female'].includes(editForm.gender)) {
       toast.error('Please select a valid gender');
       return;
     }
@@ -216,7 +204,6 @@ export default function RegistrationPage() {
         age: updated.age ?? age,
         gender: updated.gender ?? editForm.gender,
       });
-      setIsEditingDetails(false);
       toast.success('Participant details updated');
     } catch (error: any) {
       console.error('Update participant error:', error);
@@ -665,7 +652,7 @@ export default function RegistrationPage() {
                     </button>
                   )}
                   <button
-                    onClick={() => { setSelectedParticipant(null); setIsEditingDetails(false); }}
+                    onClick={() => setSelectedParticipant(null)}
                     className="text-sm text-gray-500 hover:text-gray-700"
                   >
                     Close
@@ -679,32 +666,14 @@ export default function RegistrationPage() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between border-b pb-2">
                     <h4 className="text-sm font-medium text-gray-900">Basic Information</h4>
-                    {!isEditingDetails ? (
-                      <button
-                        onClick={startEditDetails}
-                        className="flex items-center text-xs text-blue-600 hover:text-blue-800 font-medium"
-                      >
-                        <Pencil className="h-3.5 w-3.5 mr-1" />
-                        Edit Age / Gender
-                      </button>
-                    ) : (
-                      <div className="flex items-center space-x-3">
-                        <button
-                          onClick={saveEditDetails}
-                          disabled={isSavingEdit}
-                          className="text-xs text-green-600 hover:text-green-800 font-medium disabled:opacity-50"
-                        >
-                          {isSavingEdit ? 'Saving...' : 'Save'}
-                        </button>
-                        <button
-                          onClick={cancelEditDetails}
-                          disabled={isSavingEdit}
-                          className="text-xs text-gray-500 hover:text-gray-700"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    )}
+                    <button
+                      onClick={saveEditDetails}
+                      disabled={isSavingEdit}
+                      className="flex items-center text-xs text-blue-600 hover:text-blue-800 font-medium disabled:opacity-50"
+                    >
+                      <Pencil className="h-3.5 w-3.5 mr-1" />
+                      {isSavingEdit ? 'Saving...' : 'Save Age / Gender'}
+                    </button>
                   </div>
                   
                   <div className="flex items-center space-x-3">
@@ -727,18 +696,15 @@ export default function RegistrationPage() {
                     <Calendar className="h-5 w-5 text-gray-400" />
                     <div className="flex-1">
                       <p className="text-sm font-medium text-gray-900">Age</p>
-                      {isEditingDetails ? (
-                        <input
-                          type="number"
-                          min="1"
-                          max="120"
-                          value={editForm.age}
-                          onChange={(e) => setEditForm(prev => ({ ...prev, age: e.target.value }))}
-                          className="mt-1 w-24 px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                        />
-                      ) : (
-                        <p className="text-sm text-gray-600">{selectedParticipant.age || 'N/A'}</p>
-                      )}
+                      <input
+                        type="number"
+                        min="1"
+                        max="120"
+                        value={editForm.age}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, age: e.target.value }))}
+                        placeholder="Enter age"
+                        className="mt-1 w-24 px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      />
                     </div>
                   </div>
 
@@ -754,20 +720,15 @@ export default function RegistrationPage() {
                     <User className="h-5 w-5 text-gray-400" />
                     <div className="flex-1">
                       <p className="text-sm font-medium text-gray-900">Gender</p>
-                      {isEditingDetails ? (
-                        <select
-                          value={editForm.gender}
-                          onChange={(e) => setEditForm(prev => ({ ...prev, gender: e.target.value }))}
-                          className="mt-1 px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                        >
-                          <option value="">Select gender</option>
-                          <option value="male">Male</option>
-                          <option value="female">Female</option>
-                          <option value="other">Other</option>
-                        </select>
-                      ) : (
-                        <p className="text-sm text-gray-600 capitalize">{selectedParticipant.gender || 'N/A'}</p>
-                      )}
+                      <select
+                        value={editForm.gender}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, gender: e.target.value }))}
+                        className="mt-1 px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="">Select gender</option>
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                      </select>
                     </div>
                   </div>
                 </div>
