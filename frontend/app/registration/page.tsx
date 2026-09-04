@@ -3,7 +3,7 @@
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
-import { Search, User, Phone, Mail, Calendar, BookOpen, UserCheck, AlertCircle, Plus, CheckCircle, X, Users, UserX } from 'lucide-react';
+import { Search, User, Phone, Mail, Calendar, BookOpen, UserCheck, AlertCircle, Plus, CheckCircle, X, Users, UserX, Pencil } from 'lucide-react';
 import { participantsAPI, adminAPI } from '@/lib/api';
 import toast from 'react-hot-toast';
 
@@ -19,6 +19,8 @@ interface Participant {
   father_name: string;
   registration_timestamp: string;
   is_spot_registration: boolean;
+  attendance_marked?: boolean;
+  attendance_marked_at?: string | null;
 }
 
 interface SpotRegistrationForm {
@@ -57,6 +59,9 @@ export default function RegistrationPage() {
   });
   const [validationErrors, setValidationErrors] = useState<{[key: string]: string}>({});
   const [apiError, setApiError] = useState<string>('');
+  const [isEditingDetails, setIsEditingDetails] = useState(false);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editForm, setEditForm] = useState<{ age: string; gender: string }>({ age: '', gender: '' });
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -160,26 +165,92 @@ export default function RegistrationPage() {
     }
   };
 
+  const updateParticipantEverywhere = (id: number, patch: Partial<Participant>) => {
+    setSelectedParticipant(prev => (prev && prev.id === id ? { ...prev, ...patch } : prev));
+    setSearchResults(prev => prev.map(p => (p.id === id ? { ...p, ...patch } : p)));
+  };
+
   const handleParticipantSelect = (participant: Participant) => {
     setSelectedParticipant(participant);
+    setIsEditingDetails(false);
+    setEditForm({ age: String(participant.age ?? ''), gender: participant.gender || '' });
+  };
+
+  const startEditDetails = () => {
+    if (!selectedParticipant) return;
+    setEditForm({ age: String(selectedParticipant.age ?? ''), gender: selectedParticipant.gender || '' });
+    setIsEditingDetails(true);
+  };
+
+  const cancelEditDetails = () => {
+    setIsEditingDetails(false);
+  };
+
+  const saveEditDetails = async () => {
+    if (!selectedParticipant) return;
+
+    const age = parseInt(editForm.age);
+    if (isNaN(age) || age < 1 || age > 120) {
+      toast.error('Please enter a valid age between 1 and 120');
+      return;
+    }
+    if (!editForm.gender || !['male', 'female', 'other'].includes(editForm.gender)) {
+      toast.error('Please select a valid gender');
+      return;
+    }
+
+    setIsSavingEdit(true);
+    try {
+      const response = await participantsAPI.update(selectedParticipant.id, {
+        full_name: selectedParticipant.full_name,
+        email: selectedParticipant.email,
+        phone: selectedParticipant.phone,
+        qualification: selectedParticipant.qualification,
+        father_name: selectedParticipant.father_name,
+        age,
+        gender: editForm.gender,
+      });
+
+      const updated = response.data.participant || response.data;
+      updateParticipantEverywhere(selectedParticipant.id, {
+        age: updated.age ?? age,
+        gender: updated.gender ?? editForm.gender,
+      });
+      setIsEditingDetails(false);
+      toast.success('Participant details updated');
+    } catch (error: any) {
+      console.error('Update participant error:', error);
+      toast.error(error.response?.data?.error || 'Failed to update participant details');
+    } finally {
+      setIsSavingEdit(false);
+    }
   };
 
   const handleMarkPresent = async () => {
-    if (!selectedParticipant) return;
+    if (!selectedParticipant || selectedParticipant.attendance_marked) return;
 
     try {
       await participantsAPI.markPresent(selectedParticipant.id);
       toast.success(`${selectedParticipant.full_name} marked as present!`);
-      
+
       // Refresh attendance stats
       fetchAttendanceStats();
-      
-      // Update the selected participant's status
-      setSelectedParticipant(prev => prev ? { ...prev, attendance_marked: true } : null);
-      
+
+      // Update the selected participant's status everywhere it's shown
+      updateParticipantEverywhere(selectedParticipant.id, {
+        attendance_marked: true,
+        attendance_marked_at: new Date().toISOString(),
+      });
+
     } catch (error: any) {
       console.error('Mark present error:', error);
-      toast.error('Failed to mark participant as present');
+      // If attendance was already marked (e.g. race with another desk), sync local state instead of erroring silently
+      if (error.response?.status === 400 && /already marked/i.test(error.response?.data?.error || '')) {
+        updateParticipantEverywhere(selectedParticipant.id, { attendance_marked: true });
+        toast.error('Attendance was already marked for this participant');
+      } else {
+        toast.error(error.response?.data?.error || 'Failed to mark participant as present');
+      }
     }
   };
 
@@ -553,8 +624,17 @@ export default function RegistrationPage() {
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center text-green-600">
-                      <UserCheck className="h-5 w-5" />
+                    <div className="flex items-center">
+                      {participant.attendance_marked ? (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                          Marked Present
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                          Not marked
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -570,15 +650,22 @@ export default function RegistrationPage() {
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-medium text-gray-900">Participant Details</h3>
                 <div className="flex items-center space-x-3">
+                  {selectedParticipant.attendance_marked ? (
+                    <span className="flex items-center px-4 py-2 bg-green-100 text-green-800 rounded-md text-sm font-medium">
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Marked Present
+                    </span>
+                  ) : (
+                    <button
+                      onClick={handleMarkPresent}
+                      className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+                    >
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Mark Present
+                    </button>
+                  )}
                   <button
-                    onClick={handleMarkPresent}
-                    className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
-                  >
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    Mark Present
-                  </button>
-                  <button
-                    onClick={() => setSelectedParticipant(null)}
+                    onClick={() => { setSelectedParticipant(null); setIsEditingDetails(false); }}
                     className="text-sm text-gray-500 hover:text-gray-700"
                   >
                     Close
@@ -590,7 +677,35 @@ export default function RegistrationPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Basic Information */}
                 <div className="space-y-4">
-                  <h4 className="text-sm font-medium text-gray-900 border-b pb-2">Basic Information</h4>
+                  <div className="flex items-center justify-between border-b pb-2">
+                    <h4 className="text-sm font-medium text-gray-900">Basic Information</h4>
+                    {!isEditingDetails ? (
+                      <button
+                        onClick={startEditDetails}
+                        className="flex items-center text-xs text-blue-600 hover:text-blue-800 font-medium"
+                      >
+                        <Pencil className="h-3.5 w-3.5 mr-1" />
+                        Edit Age / Gender
+                      </button>
+                    ) : (
+                      <div className="flex items-center space-x-3">
+                        <button
+                          onClick={saveEditDetails}
+                          disabled={isSavingEdit}
+                          className="text-xs text-green-600 hover:text-green-800 font-medium disabled:opacity-50"
+                        >
+                          {isSavingEdit ? 'Saving...' : 'Save'}
+                        </button>
+                        <button
+                          onClick={cancelEditDetails}
+                          disabled={isSavingEdit}
+                          className="text-xs text-gray-500 hover:text-gray-700"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                  </div>
                   
                   <div className="flex items-center space-x-3">
                     <User className="h-5 w-5 text-gray-400" />
@@ -610,9 +725,20 @@ export default function RegistrationPage() {
 
                   <div className="flex items-center space-x-3">
                     <Calendar className="h-5 w-5 text-gray-400" />
-                    <div>
+                    <div className="flex-1">
                       <p className="text-sm font-medium text-gray-900">Age</p>
-                      <p className="text-sm text-gray-600">{selectedParticipant.age || 'N/A'}</p>
+                      {isEditingDetails ? (
+                        <input
+                          type="number"
+                          min="1"
+                          max="120"
+                          value={editForm.age}
+                          onChange={(e) => setEditForm(prev => ({ ...prev, age: e.target.value }))}
+                          className="mt-1 w-24 px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      ) : (
+                        <p className="text-sm text-gray-600">{selectedParticipant.age || 'N/A'}</p>
+                      )}
                     </div>
                   </div>
 
@@ -626,9 +752,22 @@ export default function RegistrationPage() {
 
                   <div className="flex items-center space-x-3">
                     <User className="h-5 w-5 text-gray-400" />
-                    <div>
+                    <div className="flex-1">
                       <p className="text-sm font-medium text-gray-900">Gender</p>
-                      <p className="text-sm text-gray-600 capitalize">{selectedParticipant.gender || 'N/A'}</p>
+                      {isEditingDetails ? (
+                        <select
+                          value={editForm.gender}
+                          onChange={(e) => setEditForm(prev => ({ ...prev, gender: e.target.value }))}
+                          className="mt-1 px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          <option value="">Select gender</option>
+                          <option value="male">Male</option>
+                          <option value="female">Female</option>
+                          <option value="other">Other</option>
+                        </select>
+                      ) : (
+                        <p className="text-sm text-gray-600 capitalize">{selectedParticipant.gender || 'N/A'}</p>
+                      )}
                     </div>
                   </div>
                 </div>
