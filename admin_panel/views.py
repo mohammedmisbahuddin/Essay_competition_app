@@ -700,7 +700,7 @@ def import_csv(request):
                     existing_participant.save()
                     results['updated'] += 1
                 else:
-                    # Create new participant using new PCWT format
+                    # Create new participant using new BCA format
                     full_name = participant_data.get('full_name')
                     age = participant_data.get('age')
                     registration_number = generate_registration_number(full_name, age)
