@@ -169,7 +169,7 @@ export default function ViewResults() {
             {/* Center Section - Logo */}
             <div className="flex justify-center flex-1">
               <img 
-                src="/logo.png" 
+                src="/BCA.png" 
                 alt="PCWT Logo" 
                 className="h-16 w-auto object-contain"
               />

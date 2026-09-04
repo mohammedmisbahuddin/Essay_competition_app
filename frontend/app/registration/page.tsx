@@ -370,7 +370,7 @@ export default function RegistrationPage() {
             {/* Center Section - Logo */}
             <div className="flex justify-center flex-1">
               <img 
-                src="/logo.png" 
+                src="/BCA.png" 
                 alt="PCWT Logo" 
                 className="h-12 w-auto object-contain"
               />
