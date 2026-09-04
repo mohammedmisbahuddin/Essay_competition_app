@@ -3,7 +3,7 @@
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
-import { Search, User, Phone, Mail, Calendar, BookOpen, UserCheck, AlertCircle, Plus, CheckCircle, X, Users, UserX, Pencil } from 'lucide-react';
+import { Search, User, Phone, Mail, Calendar, BookOpen, UserCheck, AlertCircle, Plus, CheckCircle, X, Users, UserX } from 'lucide-react';
 import { participantsAPI, adminAPI } from '@/lib/api';
 import toast from 'react-hot-toast';
 
@@ -174,8 +174,8 @@ export default function RegistrationPage() {
     setEditForm({ age: String(participant.age ?? ''), gender: participant.gender || '' });
   };
 
-  const saveEditDetails = async () => {
-    if (!selectedParticipant) return;
+  const handleSaveAndMarkPresent = async () => {
+    if (!selectedParticipant || selectedParticipant.attendance_marked) return;
 
     const age = parseInt(editForm.age);
     if (isNaN(age) || age < 1 || age > 120) {
@@ -189,7 +189,7 @@ export default function RegistrationPage() {
 
     setIsSavingEdit(true);
     try {
-      const response = await participantsAPI.update(selectedParticipant.id, {
+      const updateResponse = await participantsAPI.update(selectedParticipant.id, {
         full_name: selectedParticipant.full_name,
         email: selectedParticipant.email,
         phone: selectedParticipant.phone,
@@ -199,26 +199,21 @@ export default function RegistrationPage() {
         gender: editForm.gender,
       });
 
-      const updated = response.data.participant || response.data;
+      const updated = updateResponse.data.participant || updateResponse.data;
       updateParticipantEverywhere(selectedParticipant.id, {
         age: updated.age ?? age,
         gender: updated.gender ?? editForm.gender,
       });
-      toast.success('Participant details updated');
     } catch (error: any) {
       console.error('Update participant error:', error);
       toast.error(error.response?.data?.error || 'Failed to update participant details');
-    } finally {
       setIsSavingEdit(false);
+      return;
     }
-  };
-
-  const handleMarkPresent = async () => {
-    if (!selectedParticipant || selectedParticipant.attendance_marked) return;
 
     try {
       await participantsAPI.markPresent(selectedParticipant.id);
-      toast.success(`${selectedParticipant.full_name} marked as present!`);
+      toast.success(`${selectedParticipant.full_name} saved and marked as present!`);
 
       // Refresh attendance stats
       fetchAttendanceStats();
@@ -236,8 +231,10 @@ export default function RegistrationPage() {
         updateParticipantEverywhere(selectedParticipant.id, { attendance_marked: true });
         toast.error('Attendance was already marked for this participant');
       } else {
-        toast.error(error.response?.data?.error || 'Failed to mark participant as present');
+        toast.error(error.response?.data?.error || 'Details saved, but failed to mark participant as present');
       }
+    } finally {
+      setIsSavingEdit(false);
     }
   };
 
@@ -644,11 +641,12 @@ export default function RegistrationPage() {
                     </span>
                   ) : (
                     <button
-                      onClick={handleMarkPresent}
-                      className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+                      onClick={handleSaveAndMarkPresent}
+                      disabled={isSavingEdit}
+                      className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <CheckCircle className="h-4 w-4 mr-2" />
-                      Mark Present
+                      {isSavingEdit ? 'Saving...' : 'Save & Mark Present'}
                     </button>
                   )}
                   <button
@@ -664,17 +662,7 @@ export default function RegistrationPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Basic Information */}
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between border-b pb-2">
-                    <h4 className="text-sm font-medium text-gray-900">Basic Information</h4>
-                    <button
-                      onClick={saveEditDetails}
-                      disabled={isSavingEdit}
-                      className="flex items-center text-xs text-blue-600 hover:text-blue-800 font-medium disabled:opacity-50"
-                    >
-                      <Pencil className="h-3.5 w-3.5 mr-1" />
-                      {isSavingEdit ? 'Saving...' : 'Save Age / Gender'}
-                    </button>
-                  </div>
+                  <h4 className="text-sm font-medium text-gray-900 border-b pb-2">Basic Information</h4>
                   
                   <div className="flex items-center space-x-3">
                     <User className="h-5 w-5 text-gray-400" />
