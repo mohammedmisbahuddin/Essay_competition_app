@@ -45,7 +45,7 @@ export default function LoginPage() {
           {/* PCWT Logo */}
           <div className="flex justify-center mb-8">
             <img 
-              src="/logo.png" 
+              src="/BCA.png" 
               alt="PCWT Logo" 
               className="h-24 w-auto object-contain"
             />

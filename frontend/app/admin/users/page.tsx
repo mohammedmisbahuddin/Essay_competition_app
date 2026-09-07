@@ -3,7 +3,7 @@
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
-import { ArrowLeft, Search, Plus, Edit, Trash2, Download } from 'lucide-react';
+import { ArrowLeft, Search, Plus, Edit, Trash2, Download, UserCheck, UserX } from 'lucide-react';
 import { participantsAPI } from '@/lib/api';
 import toast from 'react-hot-toast';
 
@@ -37,6 +37,8 @@ export default function ManageUsers() {
   const [pageSize] = useState(100);
   const [isSearching, setIsSearching] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const [isExportingPresent, setIsExportingPresent] = useState(false);
+  const [togglingAttendanceId, setTogglingAttendanceId] = useState<number | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -147,10 +149,29 @@ export default function ManageUsers() {
     // Don't immediately set isTyping to false, let the debounce handle it
   };
 
+  const csvEscape = (value: string | number) => {
+    const str = String(value ?? '');
+    return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+  };
+
+  const downloadCsv = (headers: string[], rows: (string | number)[][], filename: string) => {
+    const csvContent = [headers, ...rows]
+      .map(row => row.map(csvEscape).join(','))
+      .join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
   const handleExportParticipants = () => {
-    const csvContent = [
+    downloadCsv(
       ['Registration Number', 'Full Name', 'Email', 'Phone', 'Gender', 'Age', 'Qualification', 'Father Name', 'Registration Date'],
-      ...participants.map(p => [
+      participants.map(p => [
         p.registration_number,
         p.full_name,
         p.email || '',
@@ -160,16 +181,84 @@ export default function ManageUsers() {
         p.qualification || '',
         p.father_name || '',
         new Date(p.registration_timestamp).toLocaleDateString()
-      ])
-    ].map(row => row.join(',')).join('\n');
+      ]),
+      `participants_${new Date().toISOString().split('T')[0]}.csv`
+    );
+  };
 
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `participants_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
+  const handleExportPresentParticipants = async () => {
+    setIsExportingPresent(true);
+    try {
+      // Attendance status isn't filterable server-side, so page through
+      // every participant and keep only the ones marked present.
+      let page = 1;
+      let total = Infinity;
+      const present: Participant[] = [];
+
+      while ((page - 1) * 50 < total) {
+        const response = await participantsAPI.getAll({ page });
+        const results: Participant[] = response.data.results || [];
+        total = response.data.count ?? results.length;
+        present.push(...results.filter(p => p.attendance_marked));
+        if (results.length === 0) break;
+        page += 1;
+      }
+
+      if (present.length === 0) {
+        toast.error('No participants have been marked present yet');
+        return;
+      }
+
+      downloadCsv(
+        ['Registration Number', 'Full Name', 'Email', 'Phone', 'Gender', 'Age', 'Qualification', 'Father Name', 'Registration Date', 'Marked Present At'],
+        present.map(p => [
+          p.registration_number,
+          p.full_name,
+          p.email || '',
+          p.phone || '',
+          p.gender,
+          p.age || '',
+          p.qualification || '',
+          p.father_name || '',
+          new Date(p.registration_timestamp).toLocaleDateString(),
+          p.attendance_marked_at ? new Date(p.attendance_marked_at).toLocaleString() : ''
+        ]),
+        `present_participants_${new Date().toISOString().split('T')[0]}.csv`
+      );
+      toast.success(`Exported ${present.length} present participant(s)`);
+    } catch (error: any) {
+      console.error('Error exporting present participants:', error);
+      toast.error('Failed to export present participants');
+    } finally {
+      setIsExportingPresent(false);
+    }
+  };
+
+  const handleToggleAttendance = async (participant: Participant) => {
+    setTogglingAttendanceId(participant.id);
+    try {
+      if (participant.attendance_marked) {
+        await participantsAPI.markAbsent(participant.id);
+        toast.success(`${participant.full_name} marked as absent`);
+      } else {
+        await participantsAPI.markPresent(participant.id);
+        toast.success(`${participant.full_name} marked as present`);
+      }
+
+      setParticipants(prev => prev.map(p => p.id === participant.id
+        ? {
+            ...p,
+            attendance_marked: !p.attendance_marked,
+            attendance_marked_at: !p.attendance_marked ? new Date().toISOString() : null,
+          }
+        : p
+      ));
+    } catch (error: any) {
+      console.error('Error toggling attendance:', error);
+      toast.error(error.response?.data?.error || 'Failed to update attendance');
+    } finally {
+      setTogglingAttendanceId(null);
+    }
   };
 
   if (!user || user.role !== 'admin') {
@@ -211,7 +300,7 @@ export default function ManageUsers() {
             {/* Center Section - Logo */}
             <div className="flex justify-center flex-1">
               <img 
-                src="/logo.png" 
+                src="/BCA.png" 
                 alt="PCWT Logo" 
                 className="h-16 w-auto object-contain"
               />
@@ -225,6 +314,14 @@ export default function ManageUsers() {
               >
                 <Download className="w-4 h-4 mr-2" />
                 Export CSV
+              </button>
+              <button
+                onClick={handleExportPresentParticipants}
+                disabled={isExportingPresent}
+                className="flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <UserCheck className="w-4 h-4 mr-2" />
+                {isExportingPresent ? 'Exporting...' : 'Export Present'}
               </button>
               <button
                 onClick={() => router.push('/admin/dashboard')}
@@ -364,13 +461,26 @@ export default function ManageUsers() {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          participant.attendance_marked 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {participant.attendance_marked ? 'Present' : 'Absent'}
-                        </span>
+                        <div className="flex items-center space-x-2">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            participant.attendance_marked 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {participant.attendance_marked ? 'Present' : 'Absent'}
+                          </span>
+                          <button
+                            onClick={() => handleToggleAttendance(participant)}
+                            disabled={togglingAttendanceId === participant.id}
+                            title={participant.attendance_marked ? 'Mark as absent' : 'Mark as present'}
+                            className="text-gray-400 hover:text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {participant.attendance_marked
+                              ? <UserX className="w-4 h-4" />
+                              : <UserCheck className="w-4 h-4" />
+                            }
+                          </button>
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex space-x-2">

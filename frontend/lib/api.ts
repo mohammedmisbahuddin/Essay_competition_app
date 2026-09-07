@@ -82,6 +82,9 @@ export const participantsAPI = {
 
   markPresent: (id: number) =>
     api.patch(`/participants/${id}/present/`),
+
+  markAbsent: (id: number) =>
+    api.patch(`/participants/${id}/absent/`),
 };
 
 // Evaluations API

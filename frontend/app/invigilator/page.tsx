@@ -3,7 +3,7 @@
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
-import { Search, User, Phone, Mail, Calendar, BookOpen, UserCheck, AlertCircle } from 'lucide-react';
+import { Search, User, Phone, Mail, Calendar, BookOpen, UserCheck, AlertCircle, CheckCircle } from 'lucide-react';
 import { participantsAPI } from '@/lib/api';
 import toast from 'react-hot-toast';
 
@@ -195,8 +195,17 @@ export default function InvigilatorPage() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center text-green-600">
-                      <UserCheck className="h-5 w-5" />
+                    <div className="flex items-center">
+                      {participant.attendance_marked ? (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                          Marked Present
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                          Not marked
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
