@@ -180,6 +180,39 @@ def mark_present(request, participant_id):
         )
 
 
+@api_view(['PATCH'])
+@permission_classes([permissions.IsAuthenticated])
+def mark_absent(request, participant_id):
+    """
+    Mark participant as absent (undo a present marking)
+    """
+    if request.user.role not in ['registration_desk', 'admin']:
+        return Response(
+            {'error': 'Registration desk access required'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    try:
+        participant = Participant.objects.get(id=participant_id)
+
+        participant.attendance_marked = False
+        participant.attendance_marked_at = None
+        participant.save()
+
+        return Response({
+            'message': 'Participant marked as absent',
+            'participant': {
+                'id': participant.id,
+                'full_name': participant.full_name
+            }
+        })
+    except Participant.DoesNotExist:
+        return Response(
+            {'error': 'Participant not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def export_results(request):
