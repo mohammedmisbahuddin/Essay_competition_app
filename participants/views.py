@@ -54,7 +54,7 @@ class ParticipantListCreateView(generics.ListCreateAPIView):
         if self.request.user.role not in ['registration_desk', 'admin']:
             raise PermissionDenied('Registration desk access required')
         
-        # Generate registration number using new PCWT format
+        # Generate registration number using new BCA format
         full_name = serializer.validated_data.get('full_name')
         age = serializer.validated_data.get('age')
         registration_number = generate_registration_number(full_name, age)
@@ -148,10 +148,24 @@ def mark_present(request, participant_id):
     
     try:
         participant = Participant.objects.get(id=participant_id)
+
+        if participant.attendance_marked:
+            return Response(
+                {
+                    'error': 'Attendance already marked for this participant',
+                    'participant': {
+                        'id': participant.id,
+                        'full_name': participant.full_name,
+                        'attendance_marked_at': participant.attendance_marked_at
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         participant.attendance_marked = True
         participant.attendance_marked_at = timezone.now()
         participant.save()
-        
+
         return Response({
             'message': 'Participant marked as present',
             'participant': {
@@ -161,7 +175,40 @@ def mark_present(request, participant_id):
         })
     except Participant.DoesNotExist:
         return Response(
-            {'error': 'Participant not found'}, 
+            {'error': 'Participant not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+@api_view(['PATCH'])
+@permission_classes([permissions.IsAuthenticated])
+def mark_absent(request, participant_id):
+    """
+    Mark participant as absent (undo a present marking)
+    """
+    if request.user.role not in ['registration_desk', 'admin']:
+        return Response(
+            {'error': 'Registration desk access required'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    try:
+        participant = Participant.objects.get(id=participant_id)
+
+        participant.attendance_marked = False
+        participant.attendance_marked_at = None
+        participant.save()
+
+        return Response({
+            'message': 'Participant marked as absent',
+            'participant': {
+                'id': participant.id,
+                'full_name': participant.full_name
+            }
+        })
+    except Participant.DoesNotExist:
+        return Response(
+            {'error': 'Participant not found'},
             status=status.HTTP_404_NOT_FOUND
         )
 

@@ -22,28 +22,33 @@ def extract_name_part(full_name, length):
     return clean_name[:length]
 
 
-def generate_pcwt_registration_number(full_name, age):
+def generate_bca_registration_number(full_name, age=None):
     """
-    Generate PCWT format registration number: PCWT + age(2) + name(2) + uuid(5)
-    Format: PCWT25JOA1B2C (13 characters total)
+    Generate BCA format registration number: BCA + age(2, optional) + name(2) + uuid(3)
+    Format with age: BCA25JOA1B (10 characters total)
+    Format without age: BCAJOA1B (8 characters total) - age segment is skipped, not zero-filled
     """
     # Extract first 2 characters of name
     name_part = extract_name_part(full_name, 2)
-    
-    # Format age as 2 digits
-    age_str = f"{age:02d}" if age else "00"
-    
-    # Generate 5-character UUID part
-    uuid_part = str(uuid.uuid4())[:5].upper()
-    
-    # Combine: PCWT + age + name + uuid
-    registration_number = f"PCWT{age_str}{name_part}{uuid_part}"
-    
-    # Ensure uniqueness (very unlikely to need retry with 5-char UUID)
+
+    # Format age as 2 digits when known; omit the segment entirely when age is missing
+    age_str = f"{min(max(age, 0), 99):02d}" if age is not None else ""
+
+    # Generate 3-character UUID part
+    uuid_part = str(uuid.uuid4())[:3].upper()
+
+    # Combine: BCA + age (if known) + name + uuid
+    registration_number = f"BCA{age_str}{name_part}{uuid_part}"
+
+    # Ensure uniqueness, bounded to avoid a runaway loop
+    attempts = 0
     while Participant.objects.filter(registration_number=registration_number).exists():
-        uuid_part = str(uuid.uuid4())[:5].upper()
-        registration_number = f"PCWT{age_str}{name_part}{uuid_part}"
-    
+        uuid_part = str(uuid.uuid4())[:3].upper()
+        registration_number = f"BCA{age_str}{name_part}{uuid_part}"
+        attempts += 1
+        if attempts > 20:
+            raise RuntimeError('Unable to generate a unique registration number after multiple attempts')
+
     return registration_number
 
 
@@ -81,12 +86,49 @@ def generate_registration_number_fallback():
 def generate_registration_number(full_name=None, age=None):
     """
     Main function to generate registration number with fallback
-    Uses new PCWT format if name and age are provided, otherwise falls back to original format
+    Uses the BCA format whenever a name is available (age is optional and simply
+    omitted from the id when missing). Only falls back to the original REG
+    format when there's no name to build a BCA id from.
     """
-    if full_name and age is not None:
-        return generate_pcwt_registration_number(full_name, age)
+    if full_name:
+        return generate_bca_registration_number(full_name, age)
     else:
         return generate_registration_number_fallback()
+
+
+# Maps a logical field to the header names (normalized: trimmed, lowercased,
+# trailing ':' stripped) that identify it in a Google Form / CSV export. Kept
+# as a list so both the form's raw column headers and API-style snake_case
+# keys resolve to the same field.
+FIELD_ALIASES = {
+    'full_name': ['full name', 'full_name'],
+    'email': ['email id', 'email', 'email_id'],
+    'phone': ['phone', 'phone_number'],
+    'gender': ['gender'],
+    'age': ['age'],
+    'qualification': ['qualification'],
+    'father_name': ["father's name", 'fathername', 'father_name'],
+    'timestamp': ['column 1', 'timestamp_of_registration', 'timestamp'],
+}
+
+
+def _normalize_key(key):
+    """
+    Normalize a raw CSV/form header so minor export differences (a leading
+    UTF-8 BOM on the first column, mismatched case, a trailing ' :' vs ':')
+    don't cause the whole row to be silently skipped.
+    """
+    if key is None:
+        return ''
+    return key.strip().lstrip('﻿').rstrip(': ').strip().lower()
+
+
+def _get_field(normalized_row, field):
+    for alias in FIELD_ALIASES[field]:
+        value = normalized_row.get(alias)
+        if value not in (None, ''):
+            return value
+    return None
 
 
 def clean_participant_data(raw_data):
@@ -96,57 +138,56 @@ def clean_participant_data(raw_data):
     cleaned_data = []
     seen_emails = set()
     seen_phones = set()
-    
+
     for row in raw_data:
+        normalized_row = {_normalize_key(key): value for key, value in row.items()}
+
         # Skip empty rows
-        if not (row.get('Full Name :') or row.get('full_name')):
+        full_name = (_get_field(normalized_row, 'full_name') or '').strip()
+        if not full_name:
             continue
-        
+
         participant = {
-            'full_name': (row.get('Full Name :') or row.get('full_name', '')).strip(),
-            'email': (row.get('Email id :') or row.get('email_id', '')).strip().lower(),
-            'phone': (row.get('Phone :') or row.get('phone', '')).strip(),
-            'gender': (row.get('Gender :') or row.get('gender', '')).strip().lower(),
+            'full_name': full_name,
+            'email': (_get_field(normalized_row, 'email') or '').strip().lower(),
+            'phone': (_get_field(normalized_row, 'phone') or '').strip(),
+            'gender': (_get_field(normalized_row, 'gender') or '').strip().lower(),
             'age': None,
-            'qualification': (row.get('Qualification :') or row.get('qualification', '')).strip(),
-            'father_name': (row.get("Father's Name :") or row.get('fathername', '')).strip(),
+            'qualification': (_get_field(normalized_row, 'qualification') or '').strip(),
+            'father_name': (_get_field(normalized_row, 'father_name') or '').strip(),
             'registration_timestamp': None
         }
-        
-        # Validate required fields
-        if not participant['full_name']:
-            continue
-        
+
         # Check for duplicates based on email or phone
         if participant['email'] and participant['email'] in seen_emails:
             continue
         if participant['phone'] and participant['phone'] in seen_phones:
             continue
-        
+
         # Validate gender
         if participant['gender'] and participant['gender'] not in ['male', 'female', 'other']:
             participant['gender'] = 'other'
-        
+
         # Validate email format
         if participant['email'] and not is_valid_email(participant['email']):
             participant['email'] = None
-        
+
         # Validate phone format
         if participant['phone'] and not is_valid_phone(participant['phone']):
             participant['phone'] = None
-        
+
         # Parse age
         try:
-            age_value = row.get('Age :') or row.get('age')
+            age_value = _get_field(normalized_row, 'age')
             if age_value:
                 age = int(age_value)
                 if 1 <= age <= 100:
                     participant['age'] = age
         except (ValueError, TypeError):
             pass
-        
+
         # Parse registration timestamp
-        timestamp_value = row.get('Column 1') or row.get('timestamp_of_registration')
+        timestamp_value = _get_field(normalized_row, 'timestamp')
         if timestamp_value:
             try:
                 # Handle different timestamp formats
